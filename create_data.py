@@ -13,6 +13,7 @@ import numpy as np
 from datetime import datetime, timedelta
 import pandas as pd
 import cv2 as cv
+import argparse
 
 from VERITAS_M4_ import EllipticalMirrorParamSE, OESE
 
@@ -176,9 +177,8 @@ def define_plots(beamLine,name):
 
     return plots, plotsSL
 
-def makedirs():
+def makedirs(parent):
     dirname = datetime.now().strftime("%m%d%H%M")
-    parent = "/Users/peterwinzell/exjobb"
     path = os.path.join(parent,dirname)
     os.mkdir(path)
 
@@ -205,7 +205,9 @@ def main():
 
     :rtype : none
     """
-    print ('main')
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-p", "--base", help="path to base directory")
+    args = parser.parse_args()
     repeats = 5 # number of repeats in raytracing
     rr.run_process = run_process
 
@@ -219,7 +221,7 @@ def main():
     print('Estimated time: ', str(timedelta(seconds=total_samples*repeats*2)))
     input('Continue? press anything...')
 
-    path,img_path = makedirs()
+    path,img_path = makedirs(args.base)
     data_df = pd.DataFrame(columns=('img', 'pitch','yaw','roll'))
 
     i = 0
