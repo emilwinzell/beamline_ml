@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 import cv2 as cv
 import argparse
+import xml.etree.ElementTree as ET
 
 import matplotlib as mpl
 mpl.use('agg')
@@ -185,6 +186,7 @@ def define_plots(beamLine):
 
     return plots, plotsSL
 
+
 def makedirs(parent):
     dirname = datetime.now().strftime("%m%d%H%M")
     path = os.path.join(parent,dirname)
@@ -192,37 +194,81 @@ def makedirs(parent):
 
     img_path = os.path.join(path,'images')
     os.mkdir(img_path)
-    return path,img_path
+    return dirname,path,img_path
 
-def retrieve_total2D(name,plots):
-    # self.total2D_RGB in plotter
-    for plot in plots:
-        if plot.title == 'TgtScr':
-            t2D = plot.total2D_RGB
 
-    print('IN AFTER SCRIPT')
-    #print(t2D)
-    #print(name)
-    #t2D *= (255.0/t2D.max())
-    #cv.imwrite(name,t2D)
+def write_xml(path,root):
+    # afterScript in runner
+    tree = ET.ElementTree(_indent(root))
+    tree.write(os.path.join(path,'data.xml'), xml_declaration=True, encoding='utf-8')
     return
 
-# Add saveing
-def data_generator(plots,beamLine):
+#pretty print method from: https://roytuts.com/building-xml-using-python/
+def _indent(elem, level=0):
+    i = "\n" + level*"  "
+    j = "\n" + (level-1)*"  "
+    if len(elem):
+        if not elem.text or not elem.text.strip():
+            elem.text = i + "  "
+        if not elem.tail or not elem.tail.strip():
+            elem.tail = i
+        for subelem in elem:
+            _indent(subelem, level+1)
+        if not elem.tail or not elem.tail.strip():
+            elem.tail = j
+    else:
+        if level and (not elem.tail or not elem.tail.strip()):
+            elem.tail = j
+    return elem
+
+
+def data_generator(plots,beamLine,name,save_path,xml_root):
+    # generator script in runner
     pitches = np.linspace(1,5,5)*1e-5
     yaws = np.array([0, 0.01, 0.05])
     rolls = np.array([0, 0.01])
     transl = np.linspace(-5,5,11) # +- 5mm
+    samplenr = 1
+    yaw = 0.0
+    roll = 0.0
     for pitch in pitches:
         beamLine.M4.extraPitch = pitch
         print('pitch is: ',pitch)
+        imgnr=0
+        images = []
         for plot in plots:
             if plot.title == 'TgtScr':
                 t2D = plot.total2D_RGB
-                print(np.shape(t2D))
+                s_str = str(samplenr).zfill(5)
+                i_str = str(imgnr).zfill(2)
+                save_name = name + '_'  + s_str + '_' + i_str + '.png'
+                plot.saveName = os.path.join(save_path,save_name)
+                imgnr += 1
+                images.append(save_name)
+        sets = (pitch,yaw,roll)
+        xml_root = _build_xml(xml_root,samplenr,sets,images)
 
+        samplenr += 1
         yield
 
+def _build_xml(root,nbr,settings,images):
+    sample = ET.SubElement(root,'sample_{}'.format(nbr))
+    specs = ET.SubElement(sample,'specifications')
+
+    pitch = ET.SubElement(specs,'pitch',{'unit':'rad'})
+    pitch.text = str(settings[0])
+    yaw = ET.SubElement(specs,'yaw',{'unit':'rad'})
+    yaw.text = str(settings[1])
+    roll = ET.SubElement(specs,'roll',{'unit':'rad'})
+    roll.text = str(settings[2])
+
+    imgs = ET.SubElement(sample,'images')
+    for i in images:
+        img = ET.SubElement(imgs,'image',{'file':i})
+    return root
+
+
+    
 def main():
     """
 
@@ -237,18 +283,15 @@ def main():
     plots, plotsSL = define_plots(beamLine)
 
 
-    #path,img_path = makedirs(args.base)
-    data_df = pd.DataFrame(columns=('img', 'pitch','yaw','roll'))
+    timestp,path,img_path = makedirs(args.base)
+    root = ET.Element('data')
 
-    name = 'tetetete'
     xrtr.run_ray_tracing(
         plots,repeats=repeats, updateEvery=repeats, beamLine=beamLine,
-        afterScript=retrieve_total2D, afterScriptArgs=(name,plots,),
-        generator=data_generator)
+        generator=data_generator, generatorArgs=(plots,beamLine,timestp,img_path,root),
+        afterScript=write_xml, afterScriptArgs=(path,root,))
 
 
-    filename = os.path.join(path, 'labels.csv')
-    #data_df.to_csv(filename, index=False)
     print('\n DONE')
 
 
