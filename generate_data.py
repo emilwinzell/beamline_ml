@@ -1,7 +1,5 @@
-__author__ = "Louisa Pickworth" #read XRT documentation: https://xrt.readthedocs.io/index.html
-__date__ = "January 2022"
-
 import sys
+import os
 sys.path.append("/Users/peterwinzell/opt/anaconda3/lib/python3.8/site-packages/xrt") ###this you need to change for your system xrt location
 import xrt.backends.raycing as raycing
 import xrt.backends.raycing.sources as rsrc
@@ -12,7 +10,15 @@ import xrt.runner as xrtr
 import xrt.backends.raycing.oes as roes
 import xrt.backends.raycing.materials as rm
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timedelta
+import pandas as pd
+import cv2 as cv
+import argparse
+
+import matplotlib as mpl
+mpl.use('agg')
+
+from VERITAS_M4_ import EllipticalMirrorParamSE, OESE
 
 # Select branch to be traced
 today=today=datetime.now()
@@ -49,9 +55,9 @@ roughM4APXPS = 0.3*1e-9 #B_branch
 
 ### Incident angles
 pitchM4APXPS = 2.0 #deg
-M4pitch=10e-5 #in radians
-M4yaw=0.05 #in radians, directly adds yaw to M4
-M4roll=0.01 #in radians, directly adds roll to M4
+M4pitch=0
+M4yaw=0 #in radians, directly adds yaw to M4
+M4roll=0 #in radians, directly adds roll to M4
 focus_position=0#adds extra distance onto focus position directly from nominal
 
 #####################
@@ -69,85 +75,6 @@ h = 4.135667e-15
 
 #material properties of mirror coating
 mAu = rm.Material('Au', rho=19.3)
-
-
-xyLimits = -5, 5
-
-class OESE(roes.OE):
-    def __init__(self, *args, **kwargs):
-        kwargs = self.__pop_kwargs(**kwargs)
-        super(OESE, self).__init__(*args,**kwargs)
-
-    def __pop_kwargs(self, **kwargs):
-        self.sagittalSE = kwargs.pop('sagittalSE')
-        self.meridionalSE = kwargs.pop('meridionalSE')
-        self.roughness = kwargs.pop('roughness')
-        return kwargs
-
-    def local_n_distorted(self, x, y):
-        if (self.sagittalSE==0):
-            b = 0
-        else:
-            b = np.random.normal(0.0, self.sagittalSE, len(x))
-            print (np.mean(b), np.std(b))
-        if (self.meridionalSE==0):
-            a = 0
-        else:
-            a = np.random.normal(0.0, self.meridionalSE, len(y))
-            print (np.mean(a),np.std(a))
-        return a,b
-
-    def local_z_distorted(self, x, y):
-        if (self.roughness==0):
-            z = 0
-        else:
-            z = np.random.normal(0.0, self.roughness, len(x))
-        return z
-
-
-class EllipticalMirrorParamSE(roes.EllipticalMirrorParam):
-    def __init__(self, *args, **kwargs):
-        kwargs = self.__pop_kwargs(**kwargs)
-        super(EllipticalMirrorParamSE, self).__init__(*args, **kwargs)
-
-    def __pop_kwargs(self, **kwargs):
-        self.sagittalSE = kwargs.pop('sagittalSE')
-        self.meridionalSE = kwargs.pop('meridionalSE')
-        self.roughness = kwargs.pop('roughness')
-        return kwargs
-
-    def local_n_distorted(self, s, phi):
-        r = self.local_r(s, phi)
-        x, y, z = self.param_to_xyz(s, phi, r)
-
-        if (self.sagittalSE==0):
-            b = 0
-        else:
-            b = np.random.normal(0.0, self.sagittalSE, len(x))
-            print (np.mean(b),np.std(b))
-        if (self.meridionalSE==0):
-            a = 0
-        else:
-            a = np.random.normal(0.0, self.meridionalSE, len(y))
-            print (np.mean(a),np.std(a))
-
-        return a,b
-
-    def local_r_distorted(self, s, phi):
-        r = self.local_r(s, phi)
-        x, y, z = self.param_to_xyz(s, phi, r)
-        if (self.roughness == 0):
-            r1 = r
-        else:
-            z += np.random.normal(0.0, self.roughness, len(x))
-            s1, phi1, r1 = self.xyz_to_param(x, y, z)
-        return r1 - r
-
-
-
-
-
-
 
 def build_beamLine(nrays=raycing.nrays):
 
@@ -175,8 +102,7 @@ def build_beamLine(nrays=raycing.nrays):
 
 
 
-#M4 elliptic: this is the final focusing optic with an elliptic figure
-
+    #M4 elliptic: this is the final focusing optic with an elliptic figure
     beamLine.M4 = EllipticalMirrorParamSE(beamLine, 'M4', surface='Au', material=(mAu,),
                                               p=14500, #entrance arm, mm
                                               q=700, #exit arm, mm
@@ -185,7 +111,7 @@ def build_beamLine(nrays=raycing.nrays):
                                               positionRoll=-np.pi/2, #horizontal deflection
                                               extraRoll=M4roll, #placeholder to scan effects of yaw, radians
                                               pitch=(pitchM4APXPS)*np.pi/180, #radians
-                                              extraPitch=M4pitch, # scan effects of pitch
+                                              extraPitch=M4pitch,
                                               extraYaw=M4yaw, #placeholder to scan effects of yaw, radians
                                               meridionalSE=merSEM4APXPS, #meridonial figure error, from metrology
                                               sagittalSE=sagSEM4APXPS, #sagittal figure error, from metrology
@@ -196,46 +122,16 @@ def build_beamLine(nrays=raycing.nrays):
                                               limOptY=[-45.0, 45.0]  #size of optic apature, y (along beam propagation)
                                                 )
 
-
-
-   #Parameters of the mirror can be pulled, printed, stored...
-    print('beamline M4 ellipse pitch: ', np.degrees(beamLine.M4.pitch))
-    print('beamline M4 ellipse yaw: ', np.degrees(beamLine.M4.yaw))
-    print('beamline M4 ellipse roll: ', np.degrees(beamLine.M4.roll))
-    print('beamline M4 ellipse definition p: ', beamLine.M4.p)
-    print('beamline M4 ellipse definition q: ', beamLine.M4.q)
-    print('beamline M4 ellipse global x: ', beamLine.M4.center[0])
-    print('beamline M4 ellipse global y: ', beamLine.M4.center[1])
-    print('beamline M4 ellipse global z: ', beamLine.M4.center[2])
-
-
     beamLine.scrM4 = rscr.Screen(beamLine, name='screenM4', center=beamLine.M4.center) #screen perpendicular to beam at M4 center
 
     tmppitchM4 = pitchM4APXPS*np.pi/180
 
     displF = 0. ## displacement from ideal focus
-    dispEx1 = 500 ## displacement extra screen 1, unit??
-    dispEx2 = -500 ## displacement extra screen 1
     #screen at focal position
     beamLine.scrTgt = rscr.Screen(beamLine, name='screen', center=[beamLine.M4.center[0]-(distM4TgtAPXPS+displF)*np.sin(2*(tmppitchM4)),
                                                                     beamLine.M4.center[1]+(distM4TgtAPXPS+displF)*np.cos(2*(tmppitchM4)),
                                                                     beamLine.M4.center[2]])
-
-    beamLine.scrTgt.dqs = np.linspace(-70, 70, 15)
-    # testing to add some more screens around target
-    # beamLine.scrExt1 = rscr.Screen(beamLine, name='exscreen1', center=[beamLine.M4.center[0]-(distM4TgtAPXPS+dispEx1)*np.sin(2*(tmppitchM4)),
-    #                                                                 beamLine.M4.center[1]+(distM4TgtAPXPS+dispEx1)*np.cos(2*(tmppitchM4)),
-    #                                                                 beamLine.M4.center[2]])
-    #
-    # beamLine.scrExt2 = rscr.Screen(beamLine, name='exscreen2', center=[beamLine.M4.center[0]-(distM4TgtAPXPS+dispEx2)*np.sin(2*(tmppitchM4)),
-    #                                                                 beamLine.M4.center[1]+(distM4TgtAPXPS+dispEx2)*np.cos(2*(tmppitchM4)),
-    #                                                                 beamLine.M4.center[2]])
-
-
-
-
-    print ('target enter: ', beamLine.scrTgt.center)
-
+    beamLine.scrTgt.dqs = np.linspace(-80, 80, 9)
 
     return beamLine
 
@@ -244,13 +140,8 @@ def run_process(beamLine, shineOnly1stSource=False):
     beamSource = beamLine.sources[0].shine()
     beamM4g, beamM4l = beamLine.M4.reflect(beamSource)
     beamM4Scr = beamLine.scrM4.expose(beamM4g)
-    # beamTgtScr = beamLine.scrTgt.expose(beamM4g)
-    # #beamExtScr1 = beamLine.scrExt1.expose(beamM4g)
-    # #beamExtScr2 = beamLine.scrExt2.expose(beamM4g)
     outDict = {'beamSource': beamSource, 'beamM4Scr': beamM4Scr}
-    #            'beamTgtScr': beamTgtScr},
-    #            'beamExtScr1':beamExtScr1,
-    #            'beamExtScr2':beamExtScr2}
+
     for i, dq in enumerate(beamLine.scrTgt.dqs):
         beamLine.scrTgt.center[1] = distSLM4APXPS + distM4TgtAPXPS + dq
         outDict['beamscrTgt_{0:02d}'.format(i)] = beamLine.scrTgt.expose(beamM4g)
@@ -260,75 +151,106 @@ def run_process(beamLine, shineOnly1stSource=False):
 
 def define_plots(beamLine):
 
-
     #Plots are defined here, they can be quite fancy, please see documentation: https://xrt.readthedocs.io/plots.html
 
     plots = []
 
 
-    #plot = xrtp.XYCPlot('beamSource')
-    #plot.xaxis.fwhmFormatStr = '%.4f'
-    #plot.yaxis.fwhmFormatStr = '%.4f'
-    #plots.append(plot)
-
-    #plotsSL = []
-
-    #plot = xrtp.XYCPlot('beamM4Scr')
-    #plot.xaxis.fwhmFormatStr = '%.4f'
-    #plot.yaxis.fwhmFormatStr = '%.4f'
-    #plots.append(plot)
-
-    #plotsSL = []
-
-
-
-    # plot = xrtp.XYCPlot('beamTgtScr')
+    # plot = xrtp.XYCPlot('beamSource')
     # plot.xaxis.fwhmFormatStr = '%.4f'
     # plot.yaxis.fwhmFormatStr = '%.4f'
-    # #plot.saveName = 'tgt_save_test.jpg'
-    # #plot.persistentName = 'testing.mat'
     # plots.append(plot)
+    #
+    # plotsSL = []
+    #
+    # plot = xrtp.XYCPlot('beamM4Scr')
+    # plot.xaxis.fwhmFormatStr = '%.4f'
+    # plot.yaxis.fwhmFormatStr = '%.4f'
+    # plots.append(plot)
+    #
+    # plotsSL = []
+
+
+    for i, dq in enumerate(beamLine.scrTgt.dqs):
+        plot = xrtp.XYCPlot('beamscrTgt_{0:02d}'.format(i),
+            title='TgtScr')
+
+        plot.xaxis.fwhmFormatStr = '%.4f'
+        plot.yaxis.fwhmFormatStr = '%.4f'
+        plots.append(plot)
 
 
     plotsSL=[]
 
-    for i, dq in enumerate(beamLine.scrTgt.dqs):
-        plot = xrtp.XYCPlot('beamscrTgt_{0:02d}'.format(i))
-            # (1,),
-            # xaxis=xrtp.XYCAxis(
-            #     r'$x$', u'µm', limits=xyLimits, bins=250, ppb=1),
-            # yaxis=xrtp.XYCAxis(
-            #     r'$z$', u'µm', limits=xyLimits, bins=250, ppb=1),
-            # ePos=0, title=beamLine.scrTgt.name+'-{0:02d}'.format(i))
-        plot.xaxis.fwhmFormatStr = '%.4f'
-        plot.yaxis.fwhmFormatStr = '%.4f'
-        # plot.textPanel = plot.fig.text(
-        #     0.2, 0.75, '', transform=plot.fig.transFigure, size=14, color='r',
-        #     ha='left')
-        # plot.textPanelTemplate = '{0}: d$q=${1:+.0f} mm'.format('{0}', dq)
-        plots.append(plot)
-
 
     return plots, plotsSL
 
+def makedirs(parent):
+    dirname = datetime.now().strftime("%m%d%H%M")
+    path = os.path.join(parent,dirname)
+    os.mkdir(path)
 
+    img_path = os.path.join(path,'images')
+    os.mkdir(img_path)
+    return path,img_path
 
+def retrieve_total2D(name,plots):
+    # self.total2D_RGB in plotter
+    for plot in plots:
+        if plot.title == 'TgtScr':
+            t2D = plot.total2D_RGB
+
+    print('IN AFTER SCRIPT')
+    #print(t2D)
+    #print(name)
+    #t2D *= (255.0/t2D.max())
+    #cv.imwrite(name,t2D)
+    return
+
+# Add saveing
+def data_generator(plots,beamLine):
+    pitches = np.linspace(1,5,5)*1e-5
+    yaws = np.array([0, 0.01, 0.05])
+    rolls = np.array([0, 0.01])
+    transl = np.linspace(-5,5,11) # +- 5mm
+    for pitch in pitches:
+        beamLine.M4.extraPitch = pitch
+        print('pitch is: ',pitch)
+        for plot in plots:
+            if plot.title == 'TgtScr':
+                t2D = plot.total2D_RGB
+                print(np.shape(t2D))
+
+        yield
 
 def main():
     """
 
     :rtype : none
     """
-    print ('main')
-
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-p", "--base", help="path to base directory")
+    args = parser.parse_args()
+    repeats = 5 # number of repeats in raytracing
     rr.run_process = run_process
     beamLine = build_beamLine(nrays=numrays)
     plots, plotsSL = define_plots(beamLine)
 
-    # this runs the number of rays for the time in repeats, updating the defined plots.
-    # you can also define parameters to scan (e.g mirror pitch), store or plot those variables.
-    # see documentation or i can send example script
-    xrtr.run_ray_tracing(plots,repeats=10,updateEvery=2,beamLine=beamLine)
+
+    #path,img_path = makedirs(args.base)
+    data_df = pd.DataFrame(columns=('img', 'pitch','yaw','roll'))
+
+    name = 'tetetete'
+    xrtr.run_ray_tracing(
+        plots,repeats=repeats, updateEvery=repeats, beamLine=beamLine,
+        afterScript=retrieve_total2D, afterScriptArgs=(name,plots,),
+        generator=data_generator)
+
+
+    filename = os.path.join(path, 'labels.csv')
+    #data_df.to_csv(filename, index=False)
+    print('\n DONE')
+
 
 
 if __name__ == '__main__':
