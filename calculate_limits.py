@@ -271,12 +271,11 @@ def define_plots(beamLine):
 
 
     plotsSL=[]
-    xlims = np.linspace(5,-5,9)
-    pm = 1.5
+
     for i, dq in enumerate(beamLine.scrTgt.dqs):
         plot = xrtp.XYCPlot('beamscrTgt_{0:02d}'.format(i), aspect = 'equal',
-            xaxis=xrtp.XYCAxis('$x$', 'mm',limits=[xlims[i]-pm, xlims[i]+pm],bins=512, ppb=2),
-            yaxis=xrtp.XYCAxis( '$z$', 'mm',limits=[-pm, +pm],bins=512, ppb=2))
+            xaxis=xrtp.XYCAxis('$x$', 'mm',limits=[-10, 10],bins=128, ppb=2),
+            yaxis=xrtp.XYCAxis( '$z$', 'mm',limits=[-10, 10],bins=128, ppb=2))
             # ePos=0, title=beamLine.scrTgt.name+'-{0:02d}'.format(i))
         plot.xaxis.fwhmFormatStr = '%.4f'
         plot.yaxis.fwhmFormatStr = '%.4f'
@@ -297,6 +296,7 @@ def data_generator(plots,beamLine,name,save_path):
     rolls = np.array([0, 0.01,0.05])
     transl = np.linspace(-5,5,11) # +- 5mm
     samplenr = 1
+    avgs = []
     for pitch in pitches:
         for yaw in yaws:
             for roll in rolls:
@@ -307,20 +307,33 @@ def data_generator(plots,beamLine,name,save_path):
                 images = []
                 sample = []
                 for plot in plots:
+                    sample.append(plot.cx) # xaxis
+                    sample.append(plot.cy) # zaxis
                     s_str = str(samplenr).zfill(5)
                     i_str = str(imgnr).zfill(2)
-                    save_name = name + '_'  + s_str + '_' + i_str + '.png'
-                    plot.saveName = os.path.join(save_path,save_name)
+                    #save_name = name + '_'  + s_str + '_' + i_str + '.png'
+                    #plot.saveName = os.path.join(save_path,save_name)
                     imgnr += 1
-                
-                print('extra p: {0}, extra y: {1}, extra r: {2}'.format(pitch,yaw,roll))
-                input('continue??')
-                
+                if samplenr > 1:
+                    avgs.append(sample)
+                #print('extra p: {0}, extra y: {1}, extra r: {2}'.format(pitch,yaw,roll))
+                # input('continue??')
+                if samplenr >= 54:
+                    _calculate_avg(np.array(avgs))
+                    return
 
                 samplenr += 1
                 yield
 
-
+def _calculate_avg(avgs):
+    #print(avgs)
+    for i,col in enumerate(avgs.T):
+        m = np.mean(col)
+        s = np.std(col)
+        if i%2 == 0:
+            print('for screen {0}(xaxis): mean = {1}, std = {2}'.format(i//2,m,s))
+        else:
+            print('for screen {0}(zaxis): mean = {1}, std = {2}'.format(i//2,m,s))
 
 def main():
     """

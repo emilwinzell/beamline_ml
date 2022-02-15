@@ -28,7 +28,7 @@ M4elliptic='yes' #'yes'
 model='VERITAS_M4_fishtails_t'+datetime. now(). strftime("%Y_%m_%d-%I-%M-%S_%p") #this is just to hold plots in save and stop overwrite
 
 
-numrays = 6000
+numrays = 9000
 
 #####ENERGY
 E=400 #1612 max for harmonic 1
@@ -229,29 +229,33 @@ def data_generator(plots,beamLine,name,save_path,xml_root):
     rolls = np.array([0, 0.01])
     transl = np.linspace(-5,5,11) # +- 5mm
     samplenr = 1
-    yaw = 0.0
-    roll = 0.0
     for pitch in pitches:
-        beamLine.M4.extraPitch = pitch
-        print('pitch is: ',pitch)
-        imgnr=0
-        images = []
-        for plot in plots:
-            if plot.title == 'TgtScr':
-                t2D = plot.total2D_RGB
-                s_str = str(samplenr).zfill(5)
-                i_str = str(imgnr).zfill(2)
-                save_name = name + '_'  + s_str + '_' + i_str + '.png'
-                plot.saveName = os.path.join(save_path,save_name)
-                imgnr += 1
-                images.append(save_name)
-        sets = (pitch,yaw,roll)
-        xml_root = _build_xml(xml_root,samplenr,sets,images)
+        for yaw in yaws:
+            for roll in rolls:
+                beamLine.M4.extraPitch = pitch
+                beamLine.M4.extraYaw = yaw
+                beamLine.M4.extraRoll = roll
+                #print('pitch is: ',pitch)
+                imgnr=0
+                images = []
+                axes = []
+                for plot in plots:
+                    if plot.title == 'TgtScr':
+                        t2D = plot.total2D_RGB
+                        s_str = str(samplenr).zfill(5)
+                        i_str = str(imgnr).zfill(2)
+                        save_name = name + '_'  + s_str + '_' + i_str + '.png'
+                        #plot.saveName = os.path.join(save_path,save_name)
+                        imgnr += 1
+                        images.append(save_name)
+                        axes.append((plot.textDx.get_text(),plot.textDy.get_text()))
+                sets = (pitch,yaw,roll)
+                xml_root = _build_xml(xml_root,samplenr,sets,images,axes)
 
-        samplenr += 1
-        yield
+                samplenr += 1
+                yield
 
-def _build_xml(root,nbr,settings,images):
+def _build_xml(root,nbr,settings,images,axes):
     sample = ET.SubElement(root,'sample_{}'.format(nbr))
     specs = ET.SubElement(sample,'specifications')
 
@@ -263,8 +267,8 @@ def _build_xml(root,nbr,settings,images):
     roll.text = str(settings[2])
 
     imgs = ET.SubElement(sample,'images')
-    for i in images:
-        img = ET.SubElement(imgs,'image',{'file':i})
+    for i,img_str in enumerate(images):
+        img = ET.SubElement(imgs,'image',{'file':img_str, 'x':axes[i][0], 'z':axes[i][1]})
     return root
 
 
@@ -277,14 +281,17 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-p", "--base", help="path to base directory")
     args = parser.parse_args()
-    repeats = 5 # number of repeats in raytracing
+    repeats = 10 # number of repeats in raytracing
     rr.run_process = run_process
     beamLine = build_beamLine(nrays=numrays)
     plots, plotsSL = define_plots(beamLine)
 
 
     timestp,path,img_path = makedirs(args.base)
-    root = ET.Element('data')
+    root = ET.Element('data', {'numrays':str(numrays), 
+                                'energy':str(E), 
+                                'resolution':str(resolution)})
+    setup = ET.SubElement(root, 'setup') #TODO: put all info about beamline in here...
 
     xrtr.run_ray_tracing(
         plots,repeats=repeats, updateEvery=repeats, beamLine=beamLine,
