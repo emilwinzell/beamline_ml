@@ -170,11 +170,13 @@ def define_plots(beamLine):
     # plots.append(plot)
     #
     # plotsSL = []
-
+    xlims = np.linspace(5,-5,9) # placing the plots
+    pm = 2
 
     for i, dq in enumerate(beamLine.scrTgt.dqs):
         plot = xrtp.XYCPlot('beamscrTgt_{0:02d}'.format(i),
-            title='TgtScr')
+                                xaxis=xrtp.XYCAxis('$x$', 'mm',limits=[xlims[i]-pm, xlims[i]+pm],bins=512, ppb=2),
+                                yaxis=xrtp.XYCAxis( '$z$', 'mm',limits=[-pm, +pm],bins=512, ppb=2))
 
         plot.xaxis.fwhmFormatStr = '%.4f'
         plot.yaxis.fwhmFormatStr = '%.4f'
@@ -224,9 +226,9 @@ def _indent(elem, level=0):
 
 def data_generator(plots,beamLine,name,save_path,xml_root):
     # generator script in runner
-    pitches = np.linspace(1,5,5)*1e-5
+    pitches = np.linspace(0,5,6)*1e-4
     yaws = np.array([0, 0.01, 0.05])
-    rolls = np.array([0, 0.01])
+    rolls = np.array([0, 0.01, 0.03])
     transl = np.linspace(-5,5,11) # +- 5mm
     samplenr = 1
     for pitch in pitches:
@@ -240,20 +242,56 @@ def data_generator(plots,beamLine,name,save_path,xml_root):
                 images = []
                 axes = []
                 for plot in plots:
-                    if plot.title == 'TgtScr':
-                        t2D = plot.total2D_RGB
-                        s_str = str(samplenr).zfill(5)
-                        i_str = str(imgnr).zfill(2)
-                        save_name = name + '_'  + s_str + '_' + i_str + '.png'
-                        #plot.saveName = os.path.join(save_path,save_name)
-                        imgnr += 1
-                        images.append(save_name)
-                        axes.append((plot.textDx.get_text(),plot.textDy.get_text()))
+                    s_str = str(samplenr).zfill(5)
+                    i_str = str(imgnr).zfill(2)
+                    save_name = name + '_'  + s_str + '_' + i_str + '.png'
+                    plot.saveName = os.path.join(save_path,save_name)
+                    imgnr += 1
+                    images.append(save_name)
+                    axes.append((plot.cx,plot.cy))
                 sets = (pitch,yaw,roll)
                 xml_root = _build_xml(xml_root,samplenr,sets,images,axes)
 
                 samplenr += 1
                 yield
+
+
+def data_rand_generator(plots,beamLine,name,save_path,xml_root):
+    # generator script in runner
+    pitches = np.linspace(0,5,6)*1e-4
+    yaws = np.linspace(0,5,20)*1e-2
+    rolls = np.linspace(0,5,20)*1e-2
+    #transl = np.linspace(-5,5,21) # +- 5mm
+    samplenr = 1
+    # pick one random setting:
+    for n in range(100):
+        pitch = pitches[np.random.randint(0,len(pitches))]
+        yaw = yaws[np.random.randint(0,len(yaws))]
+        roll = rolls[np.random.randint(0,len(rolls))]
+        exX = 2*np.random.randn()
+        exY = 2*np.random.randn()
+        exZ = 2*np.random.randn()
+        beamLine.M4.extraPitch = pitch
+        beamLine.M4.extraYaw = yaw
+        beamLine.M4.extraRoll = roll
+        beamLine.M4.center = [0+exX,distSLM4APXPS+exY,0+exZ]
+        imgnr=0
+        images = []
+        axes = []
+        for plot in plots:
+            s_str = str(samplenr).zfill(5)
+            i_str = str(imgnr).zfill(2)
+            save_name = name + '_'  + s_str + '_' + i_str + '.png'
+            plot.saveName = os.path.join(save_path,save_name)
+            imgnr += 1
+            images.append(save_name)
+            axes.append((plot.cx,plot.cy))
+        sets = (pitch,yaw,roll,exX,exY,exZ)
+        xml_root = _build_xml(xml_root,samplenr,sets,images,axes)
+
+        samplenr += 1
+        
+        yield
 
 def _build_xml(root,nbr,settings,images,axes):
     sample = ET.SubElement(root,'sample_{}'.format(nbr))
@@ -265,6 +303,8 @@ def _build_xml(root,nbr,settings,images,axes):
     yaw.text = str(settings[1])
     roll = ET.SubElement(specs,'roll',{'unit':'rad'})
     roll.text = str(settings[2])
+    center = ET.SubElement(specs,'center transl',{'unit':'mm'})
+    center.text = 'x:{0}, y:{1}, z:{2}'.format(settings[3],settings[4],settings[5])
 
     imgs = ET.SubElement(sample,'images')
     for i,img_str in enumerate(images):
@@ -292,10 +332,19 @@ def main():
                                 'energy':str(E), 
                                 'resolution':str(resolution)})
     setup = ET.SubElement(root, 'setup') #TODO: put all info about beamline in here...
+    source = ET.SubElement(setup,'source')
+    m4 = ET.SubElement(setup,'M4',{'surface':'Au',
+                                    'Pitch (deg)':str(pitchM4APXPS),
+                                    'Yaw':str(M4yaw),
+                                    'Roll':str(M4roll),
+                                    'Meridional error':str(merSEM4APXPS),
+                                    'Sagittal error':str(sagSEM4APXPS),
+                                    'Roughness':str(roughM4APXPS),
+                                    'Dist. to target':str(distM4TgtAPXPS)})
 
     xrtr.run_ray_tracing(
         plots,repeats=repeats, updateEvery=repeats, beamLine=beamLine,
-        generator=data_generator, generatorArgs=(plots,beamLine,timestp,img_path,root),
+        generator=data_rand_generator, generatorArgs=(plots,beamLine,timestp,img_path,root),
         afterScript=write_xml, afterScriptArgs=(path,root,))
 
 

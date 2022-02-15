@@ -15,8 +15,8 @@ import numpy as np
 from datetime import datetime
 import os
 
-import matplotlib as mpl
-mpl.use('agg')
+#import matplotlib as mpl
+#mpl.use('agg')
 
 # Select branch to be traced
 today=today=datetime.now()
@@ -275,8 +275,8 @@ def define_plots(beamLine):
     pm = 1.5
     for i, dq in enumerate(beamLine.scrTgt.dqs):
         plot = xrtp.XYCPlot('beamscrTgt_{0:02d}'.format(i), aspect = 'equal',
-            xaxis=xrtp.XYCAxis('$x$', 'mm',limits=[xlims[i]-pm, xlims[i]+pm],bins=512, ppb=2),
-            yaxis=xrtp.XYCAxis( '$z$', 'mm',limits=[-pm, +pm],bins=512, ppb=2))
+            xaxis=xrtp.XYCAxis('$x$', 'mm',limits=[-10, 10],bins=256, ppb=2),
+            yaxis=xrtp.XYCAxis( '$z$', 'mm',limits=[-5, 5],bins=256, ppb=2))
             # ePos=0, title=beamLine.scrTgt.name+'-{0:02d}'.format(i))
         plot.xaxis.fwhmFormatStr = '%.4f'
         plot.yaxis.fwhmFormatStr = '%.4f'
@@ -293,32 +293,38 @@ def define_plots(beamLine):
 def data_generator(plots,beamLine,name,save_path):
     # generator script in runner
     pitches = np.linspace(0,5,6)*1e-4
-    yaws = np.array([0, 0.01, 0.05])
-    rolls = np.array([0, 0.01,0.05])
-    transl = np.linspace(-5,5,11) # +- 5mm
+    yaws = np.linspace(0,5,20)*1e-2
+    rolls = np.linspace(0,5,20)*1e-2
+    #transl = np.linspace(-5,5,21) # +- 5mm
     samplenr = 1
-    for pitch in pitches:
-        for yaw in yaws:
-            for roll in rolls:
-                beamLine.M4.extraPitch = pitch
-                beamLine.M4.extraYaw = yaw
-                beamLine.M4.extraRoll = roll
-                imgnr=0
-                images = []
-                sample = []
-                for plot in plots:
-                    s_str = str(samplenr).zfill(5)
-                    i_str = str(imgnr).zfill(2)
-                    save_name = name + '_'  + s_str + '_' + i_str + '.png'
-                    plot.saveName = os.path.join(save_path,save_name)
-                    imgnr += 1
-                
-                print('extra p: {0}, extra y: {1}, extra r: {2}'.format(pitch,yaw,roll))
-                input('continue??')
-                
+    # pick one random setting:
+    for n in range(100):
+        pitch = pitches[np.random.randint(0,len(pitches))]
+        yaw = yaws[np.random.randint(0,len(yaws))]
+        roll = rolls[np.random.randint(0,len(rolls))]
+        exX = 2*np.random.randn()
+        exY = 2*np.random.randn()
+        exZ = 2*np.random.randn()
+        beamLine.M4.extraPitch = pitch
+        beamLine.M4.extraYaw = yaw
+        beamLine.M4.extraRoll = roll
+        beamLine.M4.center = [0+exX,distSLM4APXPS+exY,0+exZ]
+        imgnr=0
+        images = []
+        sample = []
+        for plot in plots:
+            s_str = str(samplenr).zfill(5)
+            i_str = str(imgnr).zfill(2)
+            save_name = name + '_'  + s_str + '_' + i_str + '.png'
+            plot.saveName = os.path.join(save_path,save_name)
+            imgnr += 1
+        
+        print('extra p: {0}, extra y: {1}, extra r: {2}, xyz = {3}, {4}, {5}'.format(pitch,yaw,roll,exX,exY,exZ))
+        input('continue??')
+        
 
-                samplenr += 1
-                yield
+        samplenr += 1
+        yield
 
 
 

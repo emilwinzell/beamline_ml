@@ -51,6 +51,7 @@ roughM4APXPS = 0.3*1e-9 #B_branch
 pitchM4APXPS = 2.0 #deg
 M4yaw=0 #in radians, directly adds yaw to M4
 M4roll=0 #in radians, directly adds roll to M4
+M4pitch=0.1
 focus_position=0#adds extra distance onto focus position directly from nominal
 
 #####################
@@ -184,6 +185,7 @@ def build_beamLine(nrays=raycing.nrays):
                                               positionRoll=-np.pi/2, #horizontal deflection
                                               extraRoll=M4roll, #placeholder to scan effects of yaw, radians
                                               pitch=(pitchM4APXPS)*np.pi/180, #radians
+                                              extraPitch=0.01,
                                               extraYaw=M4yaw, #placeholder to scan effects of yaw, radians
                                               meridionalSE=merSEM4APXPS, #meridonial figure error, from metrology
                                               sagittalSE=sagSEM4APXPS, #sagittal figure error, from metrology
