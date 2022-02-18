@@ -53,9 +53,11 @@ roughM4APXPS = 0.3*1e-9 #B_branch
 
 ### Incident angles
 pitchM4APXPS = 2.0 #deg
-M4pitch=1e-5 #in radians
+M4pitch=0.0 #in radians
 M4yaw=0.0 #in radians, directly adds yaw to M4
-M4roll=0.01 #in radians, directly adds roll to M4
+M4roll=0.0 #in radians, directly adds roll to M4
+exX = -0.0
+exY = 0.0
 focus_position=0#adds extra distance onto focus position directly from nominal
 
 #####################
@@ -149,10 +151,6 @@ class EllipticalMirrorParamSE(roes.EllipticalMirrorParam):
 
 
 
-
-
-
-
 def build_beamLine(nrays=raycing.nrays):
 
     """
@@ -185,7 +183,7 @@ def build_beamLine(nrays=raycing.nrays):
                                               p=14500, #entrance arm, mm
                                               q=700, #exit arm, mm
                                               f1=beamLine.EPU.center, #distance to source (in real beam line the secondary source or exit slit) center. should be equal to p for ideal
-                                              center=[0,distSLM4APXPS,0],
+                                              center=[exX,distSLM4APXPS,exY],
                                               positionRoll=-np.pi/2, #horizontal deflection
                                               extraRoll=M4roll, #placeholder to scan effects of yaw, radians
                                               pitch=(pitchM4APXPS)*np.pi/180, #radians
@@ -225,18 +223,8 @@ def build_beamLine(nrays=raycing.nrays):
                                                                     beamLine.M4.center[1]+(distM4TgtAPXPS+displF)*np.cos(2*(tmppitchM4)),
                                                                     beamLine.M4.center[2]])
 
-    beamLine.scrTgt.dqs = np.linspace(-80, 80, 9)
-    # testing to add some more screens around target
-    # beamLine.scrExt1 = rscr.Screen(beamLine, name='exscreen1', center=[beamLine.M4.center[0]-(distM4TgtAPXPS+dispEx1)*np.sin(2*(tmppitchM4)),
-    #                                                                 beamLine.M4.center[1]+(distM4TgtAPXPS+dispEx1)*np.cos(2*(tmppitchM4)),
-    #                                                                 beamLine.M4.center[2]])
-    #
-    # beamLine.scrExt2 = rscr.Screen(beamLine, name='exscreen2', center=[beamLine.M4.center[0]-(distM4TgtAPXPS+dispEx2)*np.sin(2*(tmppitchM4)),
-    #                                                                 beamLine.M4.center[1]+(distM4TgtAPXPS+dispEx2)*np.cos(2*(tmppitchM4)),
-    #                                                                 beamLine.M4.center[2]])
-
-
-
+    beamLine.scrTgt.dqs = np.linspace(-14, 14, 9)
+ 
 
     print ('target enter: ', beamLine.scrTgt.center)
 
@@ -248,13 +236,7 @@ def run_process(beamLine, shineOnly1stSource=False):
     beamSource = beamLine.sources[0].shine()
     beamM4g, beamM4l = beamLine.M4.reflect(beamSource)
     beamM4Scr = beamLine.scrM4.expose(beamM4g)
-    # beamTgtScr = beamLine.scrTgt.expose(beamM4g)
-    # #beamExtScr1 = beamLine.scrExt1.expose(beamM4g)
-    # #beamExtScr2 = beamLine.scrExt2.expose(beamM4g)
     outDict = {'beamSource': beamSource, 'beamM4Scr': beamM4Scr}
-    #            'beamTgtScr': beamTgtScr},
-    #            'beamExtScr1':beamExtScr1,
-    #            'beamExtScr2':beamExtScr2}
     for i, dq in enumerate(beamLine.scrTgt.dqs):
         beamLine.scrTgt.center[1] = distSLM4APXPS + distM4TgtAPXPS + dq
         outDict['beamscrTgt_{0:02d}'.format(i)] = beamLine.scrTgt.expose(beamM4g)
@@ -262,7 +244,7 @@ def run_process(beamLine, shineOnly1stSource=False):
 
 
 
-def define_plots(beamLine):
+def define_plots(beamLine,path):
 
 
     #Plots are defined here, they can be quite fancy, please see documentation: https://xrt.readthedocs.io/plots.html
@@ -272,11 +254,11 @@ def define_plots(beamLine):
 
     plotsSL=[]
     xlims = np.linspace(5,-5,9)
-    pm = 1.5
+    pm = 2.5
     for i, dq in enumerate(beamLine.scrTgt.dqs):
         plot = xrtp.XYCPlot('beamscrTgt_{0:02d}'.format(i), aspect = 'equal',
-            xaxis=xrtp.XYCAxis('$x$', 'mm',limits=[-10, 10],bins=256, ppb=2),
-            yaxis=xrtp.XYCAxis( '$z$', 'mm',limits=[-5, 5],bins=256, ppb=2))
+            xaxis=xrtp.XYCAxis('$x$', 'mm',limits=[-pm,pm],bins=512, ppb=2),
+            yaxis=xrtp.XYCAxis( '$z$', 'mm',limits=[-pm,pm],bins=512, ppb=2))
             # ePos=0, title=beamLine.scrTgt.name+'-{0:02d}'.format(i))
         plot.xaxis.fwhmFormatStr = '%.4f'
         plot.yaxis.fwhmFormatStr = '%.4f'
@@ -285,6 +267,8 @@ def define_plots(beamLine):
         #     ha='left')
         # plot.textPanelTemplate = '{0}: d$q=${1:+.0f} mm'.format('{0}', dq)
         plots.append(plot)
+        save_name = 'test_img_{}.png'.format(i)
+        plot.saveName = os.path.join(path,save_name)
 
 
     return plots, plotsSL
@@ -339,13 +323,13 @@ def main():
     name = 'test_img'
     rr.run_process = run_process
     beamLine = build_beamLine(nrays=numrays)
-    plots, plotsSL = define_plots(beamLine)
+    plots, plotsSL = define_plots(beamLine,path)
 
     # this runs the number of rays for the time in repeats, updating the defined plots.
     # you can also define parameters to scan (e.g mirror pitch), store or plot those variables.
     # see documentation or i can send example script
-    xrtr.run_ray_tracing(plots,repeats=10,updateEvery=10,beamLine=beamLine,
-                        generator=data_generator, generatorArgs=(plots,beamLine,name,path))
+    xrtr.run_ray_tracing(plots,repeats=10,updateEvery=10,beamLine=beamLine)
+                        #generator=data_generator, generatorArgs=(plots,beamLine,name,path))
 
 
 if __name__ == '__main__':

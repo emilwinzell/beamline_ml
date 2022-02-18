@@ -1,6 +1,6 @@
 import sys
 import os
-sys.path.append("/Users/peterwinzell/opt/anaconda3/lib/python3.8/site-packages/xrt") ###this you need to change for your system xrt location
+#sys.path.append("/Users/peterwinzell/opt/anaconda3/lib/python3.8/site-packages/xrt") ###this you need to change for your system xrt location
 import xrt.backends.raycing as raycing
 import xrt.backends.raycing.sources as rsrc
 import xrt.backends.raycing.screens as rscr
@@ -132,7 +132,7 @@ def build_beamLine(nrays=raycing.nrays):
     beamLine.scrTgt = rscr.Screen(beamLine, name='screen', center=[beamLine.M4.center[0]-(distM4TgtAPXPS+displF)*np.sin(2*(tmppitchM4)),
                                                                     beamLine.M4.center[1]+(distM4TgtAPXPS+displF)*np.cos(2*(tmppitchM4)),
                                                                     beamLine.M4.center[2]])
-    beamLine.scrTgt.dqs = np.linspace(-80, 80, 9)
+    beamLine.scrTgt.dqs = np.linspace(-14, 14, 9) # what to put here??
 
     return beamLine
 
@@ -150,7 +150,7 @@ def run_process(beamLine, shineOnly1stSource=False):
 
 
 
-def define_plots(beamLine):
+def define_plots(beamLine,bins):
 
     #Plots are defined here, they can be quite fancy, please see documentation: https://xrt.readthedocs.io/plots.html
 
@@ -171,12 +171,12 @@ def define_plots(beamLine):
     #
     # plotsSL = []
     xlims = np.linspace(5,-5,9) # placing the plots
-    pm = 2
+    pm = 2.5
 
     for i, dq in enumerate(beamLine.scrTgt.dqs):
         plot = xrtp.XYCPlot('beamscrTgt_{0:02d}'.format(i),
-                                xaxis=xrtp.XYCAxis('$x$', 'mm',limits=[xlims[i]-pm, xlims[i]+pm],bins=512, ppb=2),
-                                yaxis=xrtp.XYCAxis( '$z$', 'mm',limits=[-pm, +pm],bins=512, ppb=2))
+                                xaxis=xrtp.XYCAxis('$x$', 'mm',limits=[-pm, pm],bins=bins, ppb=2),
+                                yaxis=xrtp.XYCAxis( '$z$', 'mm',limits=[-pm, +pm],bins=bins, ppb=2))
 
         plot.xaxis.fwhmFormatStr = '%.4f'
         plot.yaxis.fwhmFormatStr = '%.4f'
@@ -226,55 +226,68 @@ def _indent(elem, level=0):
 
 def data_generator(plots,beamLine,name,save_path,xml_root):
     # generator script in runner
-    pitches = np.linspace(0,5,6)*1e-4
-    yaws = np.array([0, 0.01, 0.05])
-    rolls = np.array([0, 0.01, 0.03])
-    transl = np.linspace(-5,5,11) # +- 5mm
-    samplenr = 1
+    pitches = np.linspace(-10,10,5)*1e-4
+    yaws = np.linspace(-0.02,0.02,5)
+    rolls = np.linspace(-0.02,0.02,5)
+    transl = np.linspace(-0.3,0.3,3) # +- 1mm
+    input_list = _get_input(pitches,yaws,rolls,transl)
+    print('input list is {} long'.format(len(input_list)))
+    seconds = len(input_list)*6 # assuming 10 repeats, 9 images per sample and 9000 rays
+    print('estimated time taken: ', str(timedelta(seconds=seconds)))
+    if len(input_list) > 230:
+        print('input list too big, max recusion depth will be exceeded')
+        
+
+    for i,(pitch,yaw,roll,x,z) in enumerate(input_list[110:120]):
+        beamLine.M4.extraPitch = pitch
+        beamLine.M4.extraYaw = yaw
+        beamLine.M4.extraRoll = roll
+        beamLine.M4.center = [x,distSLM4APXPS,z]
+        imgnr=0
+        images = []
+        axes = []
+        for plot in plots:
+            s_str = str(i+1).zfill(5)
+            i_str = str(imgnr).zfill(2)
+            save_name = name + '_'  + s_str + '_' + i_str + '.png'
+            plot.saveName = os.path.join(save_path,save_name)
+            imgnr += 1
+            images.append(save_name)
+            axes.append((plot.cx,plot.dx,plot.cy,plot.dy))
+        sets = (pitch,yaw,roll,x,z)
+        xml_root = _build_xml(xml_root,i+1,sets,images,axes)
+        yield
+
+def _get_input(pitches,yaws,rolls,transl):
+    input_list = []
     for pitch in pitches:
         for yaw in yaws:
             for roll in rolls:
-                beamLine.M4.extraPitch = pitch
-                beamLine.M4.extraYaw = yaw
-                beamLine.M4.extraRoll = roll
-                #print('pitch is: ',pitch)
-                imgnr=0
-                images = []
-                axes = []
-                for plot in plots:
-                    s_str = str(samplenr).zfill(5)
-                    i_str = str(imgnr).zfill(2)
-                    save_name = name + '_'  + s_str + '_' + i_str + '.png'
-                    plot.saveName = os.path.join(save_path,save_name)
-                    imgnr += 1
-                    images.append(save_name)
-                    axes.append((plot.cx,plot.cy))
-                sets = (pitch,yaw,roll)
-                xml_root = _build_xml(xml_root,samplenr,sets,images,axes)
-
-                samplenr += 1
-                yield
+                for x in transl:
+                    for z in transl:
+                        input_list.append((pitch,yaw,roll,x,z))
+    return input_list
 
 
 def data_rand_generator(plots,beamLine,name,save_path,xml_root):
     # generator script in runner
-    pitches = np.linspace(0,5,6)*1e-4
-    yaws = np.linspace(0,5,20)*1e-2
-    rolls = np.linspace(0,5,20)*1e-2
-    #transl = np.linspace(-5,5,21) # +- 5mm
+    pitches = np.linspace(-10,10,21)*1e-4
+    yaws = np.linspace(-0.02,0.02,21)
+    rolls = np.linspace(-0.02,0.02,21)
+    #transl = np.linspace(-0.3,0.3,3) # +- 1mm
     samplenr = 1
     # pick one random setting:
-    for n in range(100):
+    for n in range(50):
         pitch = pitches[np.random.randint(0,len(pitches))]
         yaw = yaws[np.random.randint(0,len(yaws))]
         roll = rolls[np.random.randint(0,len(rolls))]
-        exX = 2*np.random.randn()
-        exY = 2*np.random.randn()
-        exZ = 2*np.random.randn()
+        exX = 0.2*np.random.randn()
+        #exY = 2*np.random.randn()
+        exZ = 0.2*np.random.randn()
         beamLine.M4.extraPitch = pitch
         beamLine.M4.extraYaw = yaw
         beamLine.M4.extraRoll = roll
-        beamLine.M4.center = [0+exX,distSLM4APXPS+exY,0+exZ]
+        beamLine.M4.center = [0+exX,distSLM4APXPS,0+exZ]
         imgnr=0
         images = []
         axes = []
@@ -285,8 +298,8 @@ def data_rand_generator(plots,beamLine,name,save_path,xml_root):
             plot.saveName = os.path.join(save_path,save_name)
             imgnr += 1
             images.append(save_name)
-            axes.append((plot.cx,plot.cy))
-        sets = (pitch,yaw,roll,exX,exY,exZ)
+            axes.append((plot.cx,plot.dx,plot.cy,plot.dy))
+        sets = (pitch,yaw,roll,exX,exZ)
         xml_root = _build_xml(xml_root,samplenr,sets,images,axes)
 
         samplenr += 1
@@ -304,11 +317,11 @@ def _build_xml(root,nbr,settings,images,axes):
     roll = ET.SubElement(specs,'roll',{'unit':'rad'})
     roll.text = str(settings[2])
     center = ET.SubElement(specs,'center transl',{'unit':'mm'})
-    center.text = 'x:{0}, y:{1}, z:{2}'.format(settings[3],settings[4],settings[5])
+    center.text = 'horizontal:{0}, vertical:{1}'.format(settings[3],settings[4])
 
     imgs = ET.SubElement(sample,'images')
     for i,img_str in enumerate(images):
-        img = ET.SubElement(imgs,'image',{'file':img_str, 'x':axes[i][0], 'z':axes[i][1]})
+        img = ET.SubElement(imgs,'image',{'file':img_str, 'x':''.format(axes[i][0]), 'z':str(axes[i][1])})
     return root
 
 
@@ -324,7 +337,9 @@ def main():
     repeats = 10 # number of repeats in raytracing
     rr.run_process = run_process
     beamLine = build_beamLine(nrays=numrays)
-    plots, plotsSL = define_plots(beamLine)
+
+    bins = 512
+    plots, plotsSL = define_plots(beamLine,bins)
 
 
     timestp,path,img_path = makedirs(args.base)
@@ -341,6 +356,7 @@ def main():
                                     'Sagittal error':str(sagSEM4APXPS),
                                     'Roughness':str(roughM4APXPS),
                                     'Dist. to target':str(distM4TgtAPXPS)})
+    target = ET.SubElement(setup,'Target',{'dqs':'9','x,z limits':'??','bins':str(bins)})
 
     xrtr.run_ray_tracing(
         plots,repeats=repeats, updateEvery=repeats, beamLine=beamLine,
