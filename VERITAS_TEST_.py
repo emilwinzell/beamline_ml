@@ -14,6 +14,7 @@ import xrt.backends.raycing.materials as rm
 import numpy as np
 from datetime import datetime
 import os
+import cv2 as cv
 
 #import matplotlib as mpl
 #mpl.use('agg')
@@ -257,8 +258,8 @@ def define_plots(beamLine,path):
     pm = 2.5
     for i, dq in enumerate(beamLine.scrTgt.dqs):
         plot = xrtp.XYCPlot('beamscrTgt_{0:02d}'.format(i), aspect = 'equal',
-            xaxis=xrtp.XYCAxis('$x$', 'mm',limits=[-pm,pm],bins=512, ppb=2),
-            yaxis=xrtp.XYCAxis( '$z$', 'mm',limits=[-pm,pm],bins=512, ppb=2))
+            xaxis=xrtp.XYCAxis('$x$', 'mm',limits=None,bins=256, ppb=2),
+            yaxis=xrtp.XYCAxis( '$z$', 'mm',limits=None,bins=256, ppb=2))
             # ePos=0, title=beamLine.scrTgt.name+'-{0:02d}'.format(i))
         plot.xaxis.fwhmFormatStr = '%.4f'
         plot.yaxis.fwhmFormatStr = '%.4f'
@@ -267,7 +268,7 @@ def define_plots(beamLine,path):
         #     ha='left')
         # plot.textPanelTemplate = '{0}: d$q=${1:+.0f} mm'.format('{0}', dq)
         plots.append(plot)
-        save_name = 'test_img_{}.png'.format(i)
+        save_name = 'test_img_{}.txt'.format(i)
         plot.saveName = os.path.join(path,save_name)
 
 
@@ -276,39 +277,58 @@ def define_plots(beamLine,path):
 
 def data_generator(plots,beamLine,name,save_path):
     # generator script in runner
-    pitches = np.linspace(0,5,6)*1e-4
-    yaws = np.linspace(0,5,20)*1e-2
-    rolls = np.linspace(0,5,20)*1e-2
-    #transl = np.linspace(-5,5,21) # +- 5mm
-    samplenr = 1
-    # pick one random setting:
-    for n in range(100):
-        pitch = pitches[np.random.randint(0,len(pitches))]
-        yaw = yaws[np.random.randint(0,len(yaws))]
-        roll = rolls[np.random.randint(0,len(rolls))]
-        exX = 2*np.random.randn()
-        exY = 2*np.random.randn()
-        exZ = 2*np.random.randn()
+    pitches = np.linspace(-10,10,5)*1e-4
+    yaws = np.linspace(-0.02,0.02,5)
+    rolls = np.linspace(-0.02,0.02,5)
+    transl = np.linspace(-3,3,3) # +- 1mm
+    input_list = _get_input(pitches,yaws,rolls,transl)
+    
+    for i,(pitch,yaw,roll,x,z) in enumerate(input_list[110:120]):
         beamLine.M4.extraPitch = pitch
         beamLine.M4.extraYaw = yaw
         beamLine.M4.extraRoll = roll
-        beamLine.M4.center = [0+exX,distSLM4APXPS+exY,0+exZ]
+        beamLine.M4.center = [x,distSLM4APXPS,z]
+
+        yield # Return to raytracing, will start here again when done
+
         imgnr=0
         images = []
-        sample = []
+        axes = []
+        sets = (pitch,yaw,roll,x,z)
+        print('sample: ',i)
+        print(sets)
         for plot in plots:
-            s_str = str(samplenr).zfill(5)
+            
+            s_str = str(i).zfill(5)
             i_str = str(imgnr).zfill(2)
             save_name = name + '_'  + s_str + '_' + i_str + '.png'
-            plot.saveName = os.path.join(save_path,save_name)
+
+            t2D = plot.total2D_RGB
+            if t2D.max() > 0:
+                t2D = t2D*255.0/t2D.max()
+            t2D = np.uint8(cv.flip(t2D,0))
+            t2D = cv.cvtColor(t2D,cv.COLOR_RGB2BGR)
+            cv.imwrite(os.path.join(save_path,save_name),t2D)
+
             imgnr += 1
-        
-        print('extra p: {0}, extra y: {1}, extra r: {2}, xyz = {3}, {4}, {5}'.format(pitch,yaw,roll,exX,exY,exZ))
-        input('continue??')
+            images.append(save_name)
+            axes.append((plot.cx,plot.dx,plot.cy,plot.dy))
+            plot.xaxis.limits = None
+            plot.yaxis.limits = None
+        print(axes)
+        input('cont...')
+        #xml_root = _build_xml(xml_root,i,sets,images,axes)
         
 
-        samplenr += 1
-        yield
+def _get_input(pitches,yaws,rolls,transl):
+    input_list = []
+    for pitch in pitches:
+        for yaw in yaws:
+            for roll in rolls:
+                for x in transl:
+                    for z in transl:
+                        input_list.append((pitch,yaw,roll,x,z))
+    return input_list
 
 
 
@@ -328,8 +348,8 @@ def main():
     # this runs the number of rays for the time in repeats, updating the defined plots.
     # you can also define parameters to scan (e.g mirror pitch), store or plot those variables.
     # see documentation or i can send example script
-    xrtr.run_ray_tracing(plots,repeats=10,updateEvery=10,beamLine=beamLine)
-                        #generator=data_generator, generatorArgs=(plots,beamLine,name,path))
+    xrtr.run_ray_tracing(plots,repeats=10,updateEvery=10,beamLine=beamLine,
+                        generator=data_generator, generatorArgs=(plots,beamLine,name,path))
 
 
 if __name__ == '__main__':
