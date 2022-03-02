@@ -59,9 +59,11 @@ def main():
     yaws = np.linspace(-0.03,0.03,5)
     rolls = np.linspace(-0.03,0.03,5)
     transl = np.linspace(-1,1,3) 
-
-    c = input('choose attrib (p,y,r,x or y):')
     """
+    c = input('choose attrib (p,y,r,x or y): ')
+    imgnr = input('choose img number: ')
+    
+    
 
     plot_histograms(histograms)
 
