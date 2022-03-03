@@ -324,20 +324,31 @@ def _get_input(pitches,yaws,rolls,transl):
     return input_list
 
 
-def data_rand_generator(plots,beamLine,name,save_path,xml_root):
+def data_rand_generator(num_samples,plots,beamLine,name,save_path,xml_root):
+    img_path = os.path.join(save_path,'images')
+    hist_path = os.path.join(save_path,'histograms')
+
+    last_sample = xml_root[-1].tag.split('_')[-1]
+    if last_sample.isnumeric():
+        start = int(last_sample) + 1
+    else:
+        start =  0
+
     # generator script in runner
-    pitches = np.linspace(-10,10,21)*1e-4
-    yaws = np.linspace(-0.02,0.02,21)
-    rolls = np.linspace(-0.02,0.02,21)
-    #transl = np.linspace(-0.3,0.3,3) # +- 1mm
+    pitch_lim = 0.001
+    yaw_lim = 0.02
+    roll_lim = 0.02
     # pick one random setting:
-    for n in range(10):
-        pitch = pitches[np.random.randint(0,len(pitches))]
-        yaw = yaws[np.random.randint(0,len(yaws))]
-        roll = rolls[np.random.randint(0,len(rolls))]
+    for i in range(num_samples):
+        pitch = np.random.uniform(-pitch_lim,pitch_lim)
+        yaw = np.random.uniform(-yaw_lim,yaw_lim)
+        roll = np.random.uniform(-roll_lim,roll_lim)
         exX = 0.2*np.random.randn()
-        #exY = 2*np.random.randn()
         exZ = 0.2*np.random.randn()
+
+        if _stack_size2a(i) > sys.getrecursionlimit()-200:
+            print('Getting close to recursion limit, ending')
+            return
 
         # Set M4 mirror
         beamLine.M4.extraPitch = pitch
@@ -351,20 +362,41 @@ def data_rand_generator(plots,beamLine,name,save_path,xml_root):
         images = []
         axes = []
         for plot in plots:
-            s_str = str(n).zfill(5)
+            # save 2D intensity image
+            s_str = str(i+start).zfill(5)
             i_str = str(imgnr).zfill(2)
             save_name = name + '_'  + s_str + '_' + i_str + '.png'
-
             t2D = plot.total2D_RGB
-            t2D = t2D*255.0/t2D.max()
-            t2D = cv.flip(t2D,0)
-            cv.imwrite(os.path.join(save_path,save_name),t2D)
-
+            t2D = np.log(t2D+1)
+            if t2D.max() > 0:
+                t2D = t2D*65535.0/t2D.max()
+            t2D = np.uint16(cv.flip(t2D,0))
+            t2D = cv.cvtColor(t2D,cv.COLOR_RGB2BGR)
+            cv.imwrite(os.path.join(img_path,save_name),t2D)
             imgnr += 1
             images.append(save_name)
             axes.append((plot.cx,plot.dx,plot.cy,plot.dy))
+
+            # save 1D histograms
+            xt1D = plot.xaxis.total1D
+            xbinEdges = plot.xaxis.binEdges
+            zt1D = plot.yaxis.total1D
+            zbinEdges = plot.yaxis.binEdges
+            data_df = pd.DataFrame({'xt1D':np.append(xt1D,0.0),
+                                    'zt1D':np.append(zt1D,0.0),
+                                    'xbinEdges':xbinEdges,
+                                    'zbinEdges':zbinEdges})
+            save_name = name + '_'  + s_str + '_' + i_str + '.csv'
+            filename = os.path.join(hist_path, save_name)
+            data_df.to_csv(filename, index=False)
+
+            # reset axis limits for plot
+            plot.xaxis.limits = None
+            plot.yaxis.limits = None
+
+        # save label data to xml
         sets = (pitch,yaw,roll,exX,exZ)
-        xml_root = _build_xml(xml_root,n,sets,images,axes)
+        xml_root = _build_xml(xml_root,i,sets,images,axes)
 
 
 def _build_xml(root,nbr,settings,images,axes):
@@ -409,14 +441,15 @@ def main():
 
     if args.timestp is None:
         # From scratch
-        pitches = np.linspace(-10,10,5)*1e-4
-        yaws = np.linspace(-0.02,0.02,5)
-        rolls = np.linspace(-0.02,0.02,5)
-        transl = np.linspace(-0.3,0.3,3) # +- 1mm
-        input_list = _get_input(pitches,yaws,rolls,transl)
+        # pitches = np.linspace(-10,10,5)*1e-4
+        # yaws = np.linspace(-0.02,0.02,5)
+        # rolls = np.linspace(-0.02,0.02,5)
+        # transl = np.linspace(-0.3,0.3,3) # +- 1mm
+        # input_list = _get_input(pitches,yaws,rolls,transl)
+        # np.savetxt(os.path.join(path,'input_list.txt'),input_list)
 
         timestp,path = makedirs(args.base)
-        np.savetxt(os.path.join(path,'input_list.txt'),input_list)
+        
         root = ET.Element('data', {'numrays':str(numrays), 
                                     'energy':str(E), 
                                     'resolution':str(resolution)})
@@ -443,15 +476,15 @@ def main():
         tree = ET.parse(xml)
         root = tree.getroot()
 
-        input = os.path.join(path,'input_list.txt')
-        input_list = np.loadtxt(input)
+        #input = os.path.join(path,'input_list.txt')
+        #input_list = np.loadtxt(input)
         
 
-
+    num_samples = 100
 
     xrtr.run_ray_tracing(
         plots,repeats=repeats, updateEvery=repeats, beamLine=beamLine,
-        generator=data_generator, generatorArgs=(input_list,plots,beamLine,timestp,path,root),
+        generator=data_rand_generator, generatorArgs=(num_samples,plots,beamLine,timestp,path,root),
         afterScript=write_xml, afterScriptArgs=(path,root,))
     
     

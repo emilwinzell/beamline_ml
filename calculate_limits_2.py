@@ -17,7 +17,7 @@ def step_fcn(x):
 
 def resize_img(img,x,y,dx,dy):
     pixels = 1000
-    limits = [-2.5,2.5] #mm
+    limits = [-1,1] #mm
     pix_per_mm = pixels/float(limits[1]-limits[0])
     
 
