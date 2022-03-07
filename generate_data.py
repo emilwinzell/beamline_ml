@@ -1,6 +1,5 @@
 import sys
 import os
-#sys.path.append("/Users/peterwinzell/opt/anaconda3/lib/python3.8/site-packages/xrt") ###this you need to change for your system xrt location
 import xrt.backends.raycing as raycing
 import xrt.backends.raycing.sources as rsrc
 import xrt.backends.raycing.screens as rscr
@@ -22,6 +21,7 @@ mpl.use('agg')
 
 from VERITAS_M4_ import EllipticalMirrorParamSE, OESE
 
+
 # Select branch to be traced
 today=today=datetime.now()
 branch = 'B_branch' #remove branch switching in this version, just RIXS VERITAS
@@ -29,7 +29,7 @@ M4elliptic='yes' #'yes'
 model='VERITAS_M4_fishtails_t'+datetime. now(). strftime("%Y_%m_%d-%I-%M-%S_%p") #this is just to hold plots in save and stop overwrite
 
 
-numrays = 9000
+numrays = 6000
 
 #####ENERGY
 E=400 #1612 max for harmonic 1
@@ -133,7 +133,9 @@ def build_beamLine(nrays=raycing.nrays):
     beamLine.scrTgt = rscr.Screen(beamLine, name='screen', center=[beamLine.M4.center[0]-(distM4TgtAPXPS+displF)*np.sin(2*(tmppitchM4)),
                                                                     beamLine.M4.center[1]+(distM4TgtAPXPS+displF)*np.cos(2*(tmppitchM4)),
                                                                     beamLine.M4.center[2]])
-    beamLine.scrTgt.dqs = np.linspace(-14, 14, 9) # what to put here??
+    global tgtCenter
+    tgtCenter = beamLine.M4.center[1]+(distM4TgtAPXPS+displF)*np.cos(2*(tmppitchM4))                                                               
+    beamLine.scrTgt.dqs = np.linspace(-14, 14, 9)
 
     return beamLine
 
@@ -144,8 +146,10 @@ def run_process(beamLine, shineOnly1stSource=False):
     beamM4Scr = beamLine.scrM4.expose(beamM4g)
     outDict = {'beamSource': beamSource, 'beamM4Scr': beamM4Scr}
 
+
     for i, dq in enumerate(beamLine.scrTgt.dqs):
-        beamLine.scrTgt.center[1] = distSLM4APXPS + distM4TgtAPXPS + dq
+        beamLine.scrTgt.center[1] = tgtCenter + dq
+        #print('Center is:{0}, i is: {1} '.format(beamLine.scrTgt.center[1],i))
         outDict['beamscrTgt_{0:02d}'.format(i)] = beamLine.scrTgt.expose(beamM4g)
     return outDict
 
@@ -172,12 +176,12 @@ def define_plots(beamLine,bins):
     #
     # plotsSL = []
     xlims = np.linspace(5,-5,9) # placing the plots
-    pm = 2.5
+    pm = 2
 
     for i, dq in enumerate(beamLine.scrTgt.dqs):
         plot = xrtp.XYCPlot('beamscrTgt_{0:02d}'.format(i),
-                                xaxis=xrtp.XYCAxis('$x$', 'mm',limits=None,bins=bins, ppb=2),
-                                yaxis=xrtp.XYCAxis( '$z$', 'mm',limits=None,bins=bins, ppb=2))
+                                xaxis=xrtp.XYCAxis('$x$', 'mm',limits=[-pm,pm],bins=bins, ppb=2),
+                                yaxis=xrtp.XYCAxis( '$z$', 'mm',limits=[-pm,pm],bins=bins, ppb=2))
 
         plot.xaxis.fwhmFormatStr = '%.4f'
         plot.yaxis.fwhmFormatStr = '%.4f'
@@ -335,16 +339,16 @@ def data_rand_generator(num_samples,plots,beamLine,name,save_path,xml_root):
         start =  0
 
     # generator script in runner
-    pitch_lim = 0.001
-    yaw_lim = 0.02
-    roll_lim = 0.02
+    pitch_lim = 0.0001
+    yaw_lim = 0.0002
+    roll_lim = 0.0002
     # pick one random setting:
     for i in range(num_samples):
         pitch = np.random.uniform(-pitch_lim,pitch_lim)
         yaw = np.random.uniform(-yaw_lim,yaw_lim)
         roll = np.random.uniform(-roll_lim,roll_lim)
-        exX = 0.2*np.random.randn()
-        exZ = 0.2*np.random.randn()
+        exX = 0#0.2*np.random.randn()
+        exZ = 0#0.2*np.random.randn()
 
         if _stack_size2a(i) > sys.getrecursionlimit()-200:
             print('Getting close to recursion limit, ending')
@@ -391,12 +395,12 @@ def data_rand_generator(num_samples,plots,beamLine,name,save_path,xml_root):
             data_df.to_csv(filename, index=False)
 
             # reset axis limits for plot
-            plot.xaxis.limits = None
-            plot.yaxis.limits = None
+            #plot.xaxis.limits = None
+            #plot.yaxis.limits = None
 
         # save label data to xml
         sets = (pitch,yaw,roll,exX,exZ)
-        xml_root = _build_xml(xml_root,i,sets,images,axes)
+        xml_root = _build_xml(xml_root,i+start,sets,images,axes)
 
 
 def _build_xml(root,nbr,settings,images,axes):
@@ -436,7 +440,7 @@ def main():
     rr.run_process = run_process
     beamLine = build_beamLine(nrays=numrays)
 
-    bins = 256
+    bins = 512
     plots, plotsSL = define_plots(beamLine,bins)
 
     if args.timestp is None:
@@ -480,7 +484,7 @@ def main():
         #input_list = np.loadtxt(input)
         
 
-    num_samples = 100
+    num_samples = 200
 
     xrtr.run_ray_tracing(
         plots,repeats=repeats, updateEvery=repeats, beamLine=beamLine,
