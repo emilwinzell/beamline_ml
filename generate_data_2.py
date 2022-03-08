@@ -40,7 +40,7 @@ M4elliptic='yes' #'yes'
 model='VERITAS_M4_fishtails_t'+datetime. now(). strftime("%Y_%m_%d-%I-%M-%S_%p") #this is just to hold plots in save and stop overwrite
 
 
-numrays = 6000
+numrays = 100000
 
 #####ENERGY
 E=400 #1612 max for harmonic 1
@@ -475,7 +475,7 @@ def data_rand_generator(num_samples,plots,beamLine,name,save_path,xml_root):
             if t2D.max() > 0:
                 t2D = t2D*65535.0/t2D.max()
             t2D = np.uint16(cv.flip(t2D,0))
-            t2D = cv.cvtColor(t2D,cv.COLOR_RGB2BGR)
+            t2D = cv.cvtColor(t2D,cv.COLOR_RGB2GRAY)
             cv.imwrite(os.path.join(img_path,save_name),t2D)
             imgnr += 1
             images.append(save_name)
@@ -513,8 +513,10 @@ def _build_xml(root,nbr,settings,images,axes):
     yaw.text = str(settings[1])
     roll = ET.SubElement(specs,'roll',{'unit':'rad'})
     roll.text = str(settings[2])
-    center = ET.SubElement(specs,'center_transl',{'unit':'mm'})
-    center.text = 'horizontal:{0}, vertical:{1}'.format(settings[3],settings[4])
+    xT = ET.SubElement(specs,'x_transl',{'unit':'mm'})
+    xT.text = str(settings[3])
+    zT = ET.SubElement(specs,'z_transl',{'unit':'mm'})
+    zT.text = str(settings[4])
 
     imgs = ET.SubElement(sample,'images')
     for i,img_str in enumerate(images):
@@ -542,7 +544,7 @@ def main():
 
     bins = 512
     xz_lim = 2
-    num_samples = 50
+    num_samples = 10
     plots, plotsSL = define_plots(beamLine,bins,xz_lim)
 
     if args.timestp is None:
