@@ -9,6 +9,7 @@ import numpy as np
 import argparse
 import xml.etree.ElementTree as ET
 import matplotlib.pyplot as plt
+from sklearn.utils import shuffle
 import tensorflow as tf
 from tensorflow import keras
 
@@ -104,10 +105,7 @@ def loss_func(encoder_mu, encoder_log_variance):
         return reconstruction_loss_factor * reconstruction_loss
 
     def vae_kl_loss(encoder_mu, encoder_log_variance):
-        print(encoder_mu.shape)
-        print(encoder_log_variance.shape)
         kl_loss = -0.5 * keras.backend.sum(1.0 + encoder_log_variance - keras.backend.square(encoder_mu) - keras.backend.exp(encoder_log_variance), axis=[1,2,3])
-        print(kl_loss.shape)
         return kl_loss
 
     def vae_kl_loss_metric(y_true, y_predict):
@@ -126,7 +124,7 @@ def loss_func(encoder_mu, encoder_log_variance):
 
     return vae_loss
 
-def load_data(path,xml_root):
+def load_data(path,xml_root,shuffle=True):
     labels = []
     targets = []
     for item in xml_root:
@@ -147,6 +145,10 @@ def load_data(path,xml_root):
                     targets.append(img3d)
     labels = np.array(labels)
     targets = np.array(targets)
+    if shuffle:
+        perm = np.random.permutation(targets.shape[0])
+        targets = targets[perm,:,:,:]
+        labels = labels[perm,:]
     return targets, labels
 
 def normalize(img):
@@ -158,6 +160,8 @@ def normalize(img):
         return img.astype(np.float64)
 
 def main():
+    train = True #CHANGE TO FALSE TO EVALUATE MODEL
+    
     parser = argparse.ArgumentParser()
     parser.add_argument("-t", "--timestp",default='/home/emiwin/exjobb/??' ,help=" path to timestamp data folder")
     args = parser.parse_args()
@@ -167,31 +171,74 @@ def main():
     tree = ET.parse(xml)
     root = tree.getroot()
     targets,labels = load_data(images,root)
-    x_train = targets[:8,:,:,:]
-    x_test = targets[8:,:,:,:]
 
-    
+    num_samples = targets.shape[0]
+    num_train = int(num_samples*0.8)
+    x_train = targets[:num_train,:,:,:]
+    x_test = targets[num_train:,:,:,:]
+    y_train = labels[:num_train,:]
+    y_test = labels[num_train:,:]
+
     latent_space_dim = 5
     img_size = (512,512)
     depth = 9
-    encoder_model,enc_mu,enc_log_var, shape = build_encoder(width=img_size[0],height=img_size[1],depth=depth,latent_space_dim=latent_space_dim)
-    encoder_model.summary()
+    encoder,enc_mu,enc_log_var, shape = build_encoder(width=img_size[0],height=img_size[1],depth=depth,latent_space_dim=latent_space_dim)
+    encoder.summary()
 
-    decoder_model = build_decoder(shape,latent_space_dim=latent_space_dim)
-    decoder_model.summary()
+    decoder = build_decoder(shape,latent_space_dim=latent_space_dim)
+    decoder.summary()
 
     vae_input = keras.layers.Input(shape=(depth,img_size[0], img_size[1], 1), name="VAE_input")
-    vae_encoder_output = encoder_model(vae_input)
+    vae_encoder_output = encoder(vae_input)
 
-    vae_decoder_output = decoder_model(vae_encoder_output)
+    vae_decoder_output = decoder(vae_encoder_output)
     vae = keras.models.Model(vae_input, vae_decoder_output, name="VAE")
     vae.summary()
 
     vae.compile(optimizer=keras.optimizers.Adam(learning_rate=0.0005), loss=loss_func(enc_mu, enc_log_var))
+    models = os.path.join(args.timestp,'models_1')   
+    created_dir = False
+    n = 1
 
-
-    vae.fit(x_train, x_train, epochs=4, batch_size=8, shuffle=True, validation_data=(x_test, x_test))
+    if train:
     
+        vae.fit(x_train, x_train, epochs=1, batch_size=8, shuffle=True, validation_data=(x_test, x_test))
+
+        while not created_dir:
+            try:
+                os.mkdir(models)
+                created_dir = True
+            except OSError:
+                created_dir = False
+                n += 1
+                models = os.path.join(args.timestp,'models_{}'.format(n))
+
+        encoder.save(os.path.join(models,"VAE_encoder.h5")) 
+        decoder.save(os.path.join(models,"VAE_decoder.h5"))
+        vae.save(os.path.join(models,"VAE.h5"))
+        encoder.save_weights(os.path.join(models,'encoder_weights.h5'))
+        decoder.save_weights(os.path.join(models,'decoder_weights.h5'))
+    else:
+        encoder.load_weights(os.path.join(models,'encoder_weights.h5'))
+        decoder.load_weights(os.path.join(models,'decoder_weights.h5'))
+
+        encoded_data = encoder.predict(x_test)
+        decoded_data = decoder.predict(encoded_data)
+
+        print(y_test)
+        print(decoded_data.shape)
+
+        for n in range(2):
+            for i in range(9):
+                img = decoded_data[n,i,:,:,:]
+                if img.max() > 0:
+                    img = img*65535.0/img.max() 
+                img = img.astype(np.uint16)
+                cv.imshow('Input',img)
+                print(y_test[n,:])
+                cv.waitKey(0)
+
+
 
 if __name__ == '__main__':
     main()
