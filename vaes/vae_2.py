@@ -3,7 +3,7 @@
 #
 #
 #  Version 2.0
-# 
+#  Trained for 100 epochs 20 bsize, still very poor results...
 import sys
 import os
 import cv2 as cv

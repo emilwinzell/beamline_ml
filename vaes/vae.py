@@ -1,7 +1,9 @@
 #
 # Inspired by: https://blog.paperspace.com/how-to-build-variational-autoencoder-keras/
 #
-
+#
+#  Version 1.0
+# Trained for 30 epochs on 03071514 (350 images) -- poor results
 import sys
 import os
 import cv2 as cv
@@ -115,10 +117,6 @@ def loss_func(encoder_mu, encoder_log_variance):
     def vae_loss(y_true, y_predict):
         reconstruction_loss = vae_reconstruction_loss(y_true, y_predict)
         kl_loss = vae_kl_loss(y_true, y_predict)
-        # print(y_true.shape)
-        # print(y_predict.shape)
-        # print(reconstruction_loss.shape)
-        # print(kl_loss.shape)
         loss = reconstruction_loss + kl_loss
         return loss
 
@@ -161,7 +159,7 @@ def normalize(img):
 
 def main():
     train = True #CHANGE TO FALSE TO EVALUATE MODEL
-    
+
     parser = argparse.ArgumentParser()
     parser.add_argument("-t", "--timestp",default='/home/emiwin/exjobb/??' ,help=" path to timestamp data folder")
     args = parser.parse_args()
@@ -173,7 +171,7 @@ def main():
     targets,labels = load_data(images,root)
 
     num_samples = targets.shape[0]
-    num_train = int(num_samples*0.8)
+    num_train = int(num_samples*0.8) # 80% to train
     x_train = targets[:num_train,:,:,:]
     x_test = targets[num_train:,:,:,:]
     y_train = labels[:num_train,:]
@@ -200,44 +198,43 @@ def main():
     created_dir = False
     n = 1
 
-    if train:
+    # if train:
     
-        vae.fit(x_train, x_train, epochs=1, batch_size=8, shuffle=True, validation_data=(x_test, x_test))
+    #     vae.fit(x_train, x_train, epochs=1, batch_size=8, shuffle=True, validation_data=(x_test, x_test))
 
-        while not created_dir:
-            try:
-                os.mkdir(models)
-                created_dir = True
-            except OSError:
-                created_dir = False
-                n += 1
-                models = os.path.join(args.timestp,'models_{}'.format(n))
+    #     while not created_dir:
+    #         try:
+    #             os.mkdir(models)
+    #             created_dir = True
+    #         except OSError:
+    #             created_dir = False
+    #             n += 1
+    #             models = os.path.join(args.timestp,'models_{}'.format(n))
 
-        encoder.save(os.path.join(models,"VAE_encoder.h5")) 
-        decoder.save(os.path.join(models,"VAE_decoder.h5"))
-        vae.save(os.path.join(models,"VAE.h5"))
-        encoder.save_weights(os.path.join(models,'encoder_weights.h5'))
-        decoder.save_weights(os.path.join(models,'decoder_weights.h5'))
-    else:
-        encoder.load_weights(os.path.join(models,'encoder_weights.h5'))
-        decoder.load_weights(os.path.join(models,'decoder_weights.h5'))
+    #     encoder.save(os.path.join(models,"VAE_encoder.h5")) 
+    #     decoder.save(os.path.join(models,"VAE_decoder.h5"))
+    #     vae.save(os.path.join(models,"VAE.h5"))
+    #     encoder.save_weights(os.path.join(models,'encoder_weights.h5'))
+    #     decoder.save_weights(os.path.join(models,'decoder_weights.h5'))
+    # else:
+    #     encoder.load_weights(os.path.join(models,'encoder_weights.h5'))
+    #     decoder.load_weights(os.path.join(models,'decoder_weights.h5'))
 
-        encoded_data = encoder.predict(x_test)
-        decoded_data = decoder.predict(encoded_data)
+    #     encoded_data = encoder.predict(x_test)
+    #     decoded_data = decoder.predict(encoded_data)
 
-        print(y_test)
-        print(decoded_data.shape)
+    #     print(y_test)
+    #     print(decoded_data.shape)
 
-        for n in range(2):
-            for i in range(9):
-                img = decoded_data[n,i,:,:,:]
-                if img.max() > 0:
-                    img = img*65535.0/img.max() 
-                img = img.astype(np.uint16)
-                cv.imshow('Input',img)
-                print(y_test[n,:])
-                cv.waitKey(0)
-
+    #     for n in range(2):
+    #         for i in range(9):
+    #             img = decoded_data[n,i,:,:,:]
+    #             if img.max() > 0:
+    #                 img = img*65535.0/img.max() 
+    #             img = img.astype(np.uint16)
+    #             cv.imshow('Input',img)
+    #             print(y_test[n,:])
+    #             cv.waitKey(0)
 
 
 if __name__ == '__main__':
