@@ -13,6 +13,10 @@ import xml.etree.ElementTree as ET
 import tensorflow as tf
 from tensorflow import keras
 
+import logging
+logging.basicConfig(filename='./vae_2.log', level=logging.DEBUG)
+logger=logging.getLogger(__name__)
+
 
 def build_encoder(width=512,height=512,depth=9,latent_space_dim=5):
     print('ENCODER')
@@ -23,29 +27,29 @@ def build_encoder(width=512,height=512,depth=9,latent_space_dim=5):
     x = keras.layers.LeakyReLU(name='encoder_leayrelu_1')(x)
     print(x.shape)
 
-    x = keras.layers.Conv3D(filters=32, kernel_size=3, strides=(1,1,1), name='encoder_conv_2')(x)
+    x = keras.layers.Conv3D(filters=8, kernel_size=3, strides=(1,1,1), name='encoder_conv_2')(x)
     x = keras.layers.BatchNormalization(name='encoder_norm_2')(x)
     x = keras.layers.LeakyReLU(name='encoder_leayrelu_2')(x)
     print(x.shape)
 
-    x = keras.layers.Conv3D(filters=32, kernel_size=3, strides=(1,1,1), name='encoder_conv_3')(x)
+    x = keras.layers.Conv3D(filters=8, kernel_size=3, strides=(1,1,1), name='encoder_conv_3')(x)
     x = keras.layers.MaxPool3D(pool_size=2)(x)
     x = keras.layers.BatchNormalization(name='encoder_norm_3')(x)
     x = keras.layers.LeakyReLU(name='encoder_leayrelu_3')(x)
     print(x.shape)
 
-    x = keras.layers.Conv2D(filters=64, kernel_size=(3,3), strides=1, name='encoder_conv_4')(x)
+    x = keras.layers.Conv2D(filters=16, kernel_size=(3,3), strides=1, name='encoder_conv_4')(x)
     x = keras.layers.BatchNormalization(name='encoder_norm_4')(x)
     x = keras.layers.LeakyReLU(name='encoder_leayrelu_4')(x)
     print(x.shape)
 
-    x = keras.layers.Conv2D(filters=64, kernel_size=(3,3), strides=2, name='encoder_conv_5')(x)
+    x = keras.layers.Conv2D(filters=16, kernel_size=(3,3), strides=2, name='encoder_conv_5')(x)
     x = keras.layers.MaxPooling3D(pool_size=(1,2,2), strides=(1,2,2), padding='valid')(x)
     x = keras.layers.BatchNormalization(name='encoder_norm_5')(x)
     x = keras.layers.LeakyReLU(name='encoder_leayrelu_5')(x)
     print(x.shape)
 
-    x = keras.layers.Conv2D(filters=64, kernel_size=(3,3), strides=2, name='encoder_conv_6')(x)
+    x = keras.layers.Conv2D(filters=32, kernel_size=(3,3), strides=2, name='encoder_conv_6')(x)
     x = keras.layers.MaxPooling3D(pool_size=(1,2,2), strides=(1,2,2), padding='valid')(x)
     x = keras.layers.BatchNormalization(name='encoder_norm_6')(x)
     x = keras.layers.LeakyReLU(name='encoder_leayrelu_6')(x)
@@ -78,27 +82,27 @@ def build_decoder(shape,latent_space_dim=5):
     x = keras.layers.Reshape(target_shape=shape)(x)
     print(x.shape)
 
-    x = keras.layers.Conv3DTranspose(filters=64, kernel_size=(2,4,4),padding='valid',strides=(2,4,4), name="decoder_conv_tran_1")(x)
+    x = keras.layers.Conv3DTranspose(filters=32, kernel_size=(2,4,4),padding='valid',strides=(2,4,4), name="decoder_conv_tran_1")(x)
     x = keras.layers.BatchNormalization(name='decoder_norm_1')(x)
     x = keras.layers.LeakyReLU(name='decoder_leayrelu_1')(x)
     print(x.shape)
 
-    x = keras.layers.Conv3DTranspose(filters=64, kernel_size=(2,3,3),padding='valid', strides=(2,2,2), name="decoder_conv_tran_2")(x)
+    x = keras.layers.Conv3DTranspose(filters=16, kernel_size=(2,3,3),padding='valid', strides=(2,2,2), name="decoder_conv_tran_2")(x)
     x = keras.layers.BatchNormalization(name='decoder_norm_2')(x)
     x = keras.layers.LeakyReLU(name='decoder_leayrelu_2')(x)
     print(x.shape)
 
-    x = keras.layers.Conv3DTranspose(filters=32, kernel_size=(1,3,3),padding='valid',strides=(2,2,2), name="decoder_conv_tran_3")(x)
+    x = keras.layers.Conv3DTranspose(filters=16, kernel_size=(1,3,3),padding='valid',strides=(2,2,2), name="decoder_conv_tran_3")(x)
     x = keras.layers.BatchNormalization(name='decoder_norm_3')(x)
     x = keras.layers.LeakyReLU(name='decoder_leayrelu_3')(x)
     print(x.shape)
 
-    x = keras.layers.Conv3DTranspose(filters=32, kernel_size=(1,2,2),padding='valid',strides=(1,2,2), name="decoder_conv_tran_4")(x)
+    x = keras.layers.Conv3DTranspose(filters=8, kernel_size=(1,2,2),padding='valid',strides=(1,2,2), name="decoder_conv_tran_4")(x)
     x = keras.layers.BatchNormalization(name='decoder_norm_4')(x)
     x = keras.layers.LeakyReLU(name='decoder_leayrelu_4')(x)
     print(x.shape)
 
-    x = keras.layers.Conv3DTranspose(filters=32, kernel_size=(1,13,13),padding='valid',strides=(1,1,1), name="decoder_conv_tran_5")(x)
+    x = keras.layers.Conv3DTranspose(filters=8, kernel_size=(1,13,13),padding='valid',strides=(1,1,1), name="decoder_conv_tran_5")(x)
     x = keras.layers.BatchNormalization(name='decoder_norm_5')(x)
     x = keras.layers.LeakyReLU(name='decoder_leayrelu_5')(x)
     print(x.shape)
@@ -112,7 +116,7 @@ def build_decoder(shape,latent_space_dim=5):
 
 def loss_func(encoder_mu, encoder_log_variance):
     def vae_reconstruction_loss(y_true, y_predict):
-        reconstruction_loss_factor = 1000
+        reconstruction_loss_factor = 1
         reconstruction_loss = keras.backend.mean(keras.backend.square(y_true-y_predict), axis=[1, 2, 3])
         return reconstruction_loss_factor * reconstruction_loss
 
@@ -168,10 +172,10 @@ def normalize(img):
         return img.astype(np.float64)
 
 def main():
-    train = True #CHANGE TO FALSE TO EVALUATE MODEL
+    train = False #CHANGE TO FALSE TO EVALUATE MODEL
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("-t", "--timestp",default='/home/emiwin/exjobb/??' ,help=" path to timestamp data folder")
+    parser.add_argument("-t", "--timestp",default='/home/emiwin/exjobb/03071514' ,help=" path to timestamp data folder")
     args = parser.parse_args()
 
     images = os.path.join(args.timestp,'images')
@@ -186,6 +190,8 @@ def main():
     x_test = targets[num_train:,:,:,:]
     y_train = labels[:num_train,:]
     y_test = labels[num_train:,:]
+
+    print('loaded {} samples'.format(num_samples))
 
     latent_space_dim = 5
     img_size = (512,512)
@@ -204,13 +210,16 @@ def main():
     vae.summary()
 
     vae.compile(optimizer=keras.optimizers.Adam(learning_rate=0.0005), loss=loss_func(enc_mu, enc_log_var))
-    models = os.path.join(args.timestp,'models_1')   
+    models = os.path.join(args.timestp,'models_4')   
     created_dir = False
     n = 1
 
     if train:
-    
-        vae.fit(x_train, x_train, epochs=100, batch_size=50, shuffle=True, validation_data=(x_test, x_test))
+        print('STARTING TRAINING')
+        try:
+            vae.fit(x_train, x_train, epochs=100, batch_size=20, shuffle=True, validation_data=(x_test, x_test))
+        except Exception as e:
+            logger.error(e)
 
         while not created_dir:
             try:
@@ -233,10 +242,10 @@ def main():
         encoded_data = encoder.predict(x_test)
         decoded_data = decoder.predict(encoded_data)
 
-        print(y_test)
+        #print(y_test)
         print(decoded_data.shape)
 
-        for n in range(2):
+        for n in range(10):
             for i in range(9):
                 img = decoded_data[n,i,:,:,:]
                 if img.max() > 0:
@@ -244,6 +253,7 @@ def main():
                 img = img.astype(np.uint16)
                 cv.imshow('Input',img)
                 print(y_test[n,:])
+                print(encoded_data[n,:])
                 cv.waitKey(0)
 
 
