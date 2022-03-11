@@ -4,6 +4,7 @@
 #
 
 
+from gc import callbacks
 import sys
 import os
 import cv2 as cv
@@ -117,11 +118,14 @@ def main():
     model.compile(optimizer=keras.optimizers.Adam(learning_rate=0.0005), 
                     loss=loss_func)
 
+    my_callbacks = [tf.keras.callbacks.EarlyStopping(patience=3),
+                    tf.keras.callbacks.TensorBoard(log_dir='./logs'),]
+
     created_dir = False
     n = 1                
 
     if train:
-        model.fit(targets,labels,batch_size=20,epochs=30,shuffle=True,validation_split=0.2)
+        model.fit(targets,labels,batch_size=20,epochs=30,shuffle=True,validation_split=0.2,callbacks=my_callbacks)
         #save weights
         while not created_dir:
             try:
@@ -142,6 +146,7 @@ def main():
         for n in range(10):
             for i in range(9):
                 img = targets[n,i,:,:,:]
+                
                 if img.max() > 0:
                     img = img*65535.0/img.max() 
                 img = img.astype(np.uint16)
