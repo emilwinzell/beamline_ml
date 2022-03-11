@@ -248,6 +248,8 @@ def main():
         for n in range(10):
             for i in range(9):
                 img = decoded_data[n,i,:,:,:]
+                img[img < 0] = 0
+                #rint(img)
                 if img.max() > 0:
                     img = img*65535.0/img.max() 
                 img = img.astype(np.uint16)
