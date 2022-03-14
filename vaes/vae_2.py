@@ -12,6 +12,7 @@ import argparse
 import xml.etree.ElementTree as ET
 import tensorflow as tf
 from tensorflow import keras
+import glob
 
 import logging
 logging.basicConfig(filename='./vae_2.log', level=logging.DEBUG)
@@ -162,6 +163,20 @@ def load_data(path,xml_root,shuffle=True):
         targets = targets[perm,:,:,:]
         labels = labels[perm,:]
     return targets, labels
+
+def load_ellipses(path):
+	list_of_imgs = glob.glob(os.path.join(path,'*.png'))
+	targets = []
+	img3d = []
+	for i,img_name in enumerate(list_of_imgs):
+		img = cv.imread(img_name,0)
+		img3d.append(img)
+		if len(img3d) == 9:
+			targets.append(img3d)
+			img3d = []
+	targets = np.array(targets)
+	return targets
+		
 
 def normalize(img):
     if img.max() > 0:
