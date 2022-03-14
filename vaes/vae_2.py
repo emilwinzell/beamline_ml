@@ -12,12 +12,48 @@ import argparse
 import xml.etree.ElementTree as ET
 import tensorflow as tf
 from tensorflow import keras
+
 import glob
 
 import logging
 logging.basicConfig(filename='./vae_2.log', level=logging.DEBUG)
 logger=logging.getLogger(__name__)
 
+def load_ellipses(path):
+    list_of_imgs = glob.glob(os.path.join(path,'*.png'))
+    targets = []
+    img3d = []
+    for i,img_name in enumerate(list_of_imgs[:18]):
+        img = cv.imread(img_name,0)
+        img3d.append(img)
+        if len(img3d) == 9:
+            targets.append(img3d)
+            img3d = []
+    targets = np.array(targets)
+    return targets
+
+class My_Generator(Sequence):
+
+    def __init__(self, image_filenames, labels, batch_size):
+        self.image_filenames, self.labels = image_filenames, labels
+        self.batch_size = batch_size
+
+    def __len__(self):
+        return np.ceil(len(self.image_filenames) / float(self.batch_size))
+
+    def __getitem__(self, idx):
+        batch_x = self.image_filenames[idx * self.batch_size:(idx + 1) * self.batch_size]
+        batch_y = self.labels[idx * self.batch_size:(idx + 1) * self.batch_size]
+
+        targets = []
+        img3d = []
+        for i,img_name in enumerate(batch_x):
+            img = normalize(cv.imread(img_name,-1))
+            img3d.append(img)
+            if len(img3d) == 9:
+                targets.append(img3d)
+                img3d = []
+        return np.array(targets), np.array(batch_y)
 
 def build_encoder(width=512,height=512,depth=9,latent_space_dim=5):
     print('ENCODER')
@@ -74,6 +110,7 @@ def build_encoder(width=512,height=512,depth=9,latent_space_dim=5):
 
     model = keras.models.Model(encoder_input, encoder_output, name="encoder_model")
     return model,encoder_mu,encoder_log_variance,shape_before_flatten
+
 
 def build_decoder(shape,latent_space_dim=5):
     print('DECODER')
@@ -164,27 +201,14 @@ def load_data(path,xml_root,shuffle=True):
         labels = labels[perm,:]
     return targets, labels
 
-def load_ellipses(path):
-	list_of_imgs = glob.glob(os.path.join(path,'*.png'))
-	targets = []
-	img3d = []
-	for i,img_name in enumerate(list_of_imgs):
-		img = cv.imread(img_name,0)
-		img3d.append(img)
-		if len(img3d) == 9:
-			targets.append(img3d)
-			img3d = []
-	targets = np.array(targets)
-	return targets
-		
 
 def normalize(img):
     if img.max() > 0:
-        norm_img = img.astype(np.float64)
+        norm_img = img.astype(np.float32)
         norm_img = norm_img/norm_img.max()
         return norm_img
     else:
-        return img.astype(np.float64)
+        return img.astype(np.float32)
 
 def main():
     train = False #CHANGE TO FALSE TO EVALUATE MODEL
@@ -197,17 +221,21 @@ def main():
     xml = os.path.join(args.timestp,'data.xml')
     tree = ET.parse(xml)
     root = tree.getroot()
-    targets,labels = load_data(images,root)
+    #targets,labels = load_data(images,root)
 
-    num_samples = targets.shape[0]
+    list_of_imgs = glob.glob(os.path.join(args.timestp,'*.png'))
+    #labels = load_labels(?? typ xml ??)
+
+    num_samples = len(list_of_imgs)/9
     num_train = int(num_samples*0.8) # 80% to train
-    x_train = targets[:num_train,:,:,:]
-    x_test = targets[num_train:,:,:,:]
-    y_train = labels[:num_train,:]
-    y_test = labels[num_train:,:]
+    x_train = list_of_imgs[:num_train]
+    x_test = list_of_imgs[num_train:]
+    #y_train = labels[:num_train,:]
+    #y_test = labels[num_train:,:]
 
     print('loaded {} samples'.format(num_samples))
 
+    
     latent_space_dim = 5
     img_size = (512,512)
     depth = 9
@@ -230,12 +258,6 @@ def main():
     n = 1
 
     if train:
-        print('STARTING TRAINING')
-        try:
-            vae.fit(x_train, x_train, epochs=100, batch_size=20, shuffle=True, validation_data=(x_test, x_test))
-        except Exception as e:
-            logger.error(e)
-
         while not created_dir:
             try:
                 os.mkdir(models)
@@ -244,7 +266,26 @@ def main():
                 created_dir = False
                 n += 1
                 models = os.path.join(args.timestp,'models_{}'.format(n))
+        
+        print('STARTING TRAINING')
 
+        batch_size = 20
+        my_training_batch_generator = My_Generator(x_train, [], batch_size)
+        my_validation_batch_generator = My_Generator(x_test, [], batch_size)
+
+
+        try:
+            #vae.fit(x_train, x_train, epochs=100, batch_size=20, shuffle=True, validation_data=(x_test, x_test))
+            vae.fit_generator(generator=my_training_batch_generator,
+                                          steps_per_epoch=(num_train // batch_size),
+                                          epochs=50,
+                                          verbose=1,
+                                          validation_data=my_validation_batch_generator,
+                                          validation_steps=((num_samples-num_train) // batch_size))
+        except Exception as e:
+            logger.error(e)
+
+        
         encoder.save(os.path.join(models,"VAE_encoder.h5")) 
         decoder.save(os.path.join(models,"VAE_decoder.h5"))
         vae.save(os.path.join(models,"VAE.h5"))
