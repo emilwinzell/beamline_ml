@@ -5,6 +5,7 @@
 #  Version 2.0
 #  Trained for 100 epochs 20 bsize, still very poor results...
 import sys
+#sys.stdout = open('output.txt','wt')
 import os
 import cv2 as cv
 import numpy as np
@@ -43,7 +44,6 @@ class My_Generator(Sequence):
         return int(np.ceil(len(self.x) / float(self.batch_size)))
 
     def __getitem__(self, idx):
-        print('Getting items')
         batch_x = self.x[idx * self.batch_size:(idx + 1) * self.batch_size]
         batch_y = self.y[idx * self.batch_size:(idx + 1) * self.batch_size]
 
@@ -216,7 +216,7 @@ def main():
     train = True #CHANGE TO FALSE TO EVALUATE MODEL
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("-t", "--timestp",default='/home/emiwin/exjobb/03071514' ,help=" path to timestamp data folder")
+    parser.add_argument("-t", "--timestp",default='/home/emiwin/exjobb/ellipses' ,help=" path to timestamp data folder")
     args = parser.parse_args()
 
     #images = os.path.join(args.timestp,'images')
@@ -247,10 +247,10 @@ def main():
     img_size = (512,512)
     depth = 9
     encoder,enc_mu,enc_log_var, shape = build_encoder(width=img_size[0],height=img_size[1],depth=depth,latent_space_dim=latent_space_dim)
-    #encoder.summary()
+    encoder.summary()
 
     decoder = build_decoder(shape,latent_space_dim=latent_space_dim)
-    #decoder.summary()
+    decoder.summary()
 
     vae_input = keras.layers.Input(shape=(depth,img_size[0], img_size[1], 1), name="VAE_input")
     vae_encoder_output = encoder(vae_input)
@@ -276,20 +276,20 @@ def main():
         
         print('STARTING TRAINING')
 
-        batch_size = 2
+        batch_size = 10
         my_training_batch_generator = My_Generator(x_train, y_train, batch_size)
         #my_validation_batch_generator = My_Generator(x_test, y_test, batch_size)
         
-        #try:
+        try:
             #vae.fit(x_train, x_train, epochs=100, batch_size=20, shuffle=True, validation_data=(x_test, x_test))
-        vae.fit(my_training_batch_generator,
+            vae.fit(my_training_batch_generator,
                     steps_per_epoch=(num_train // batch_size),
-                    epochs=50,
+                    epochs=2,
                     verbose=1,
                     validation_data=(x_test, x_test),
                     validation_steps=((num_samples-num_train) // batch_size))
-        #except Exception as e:
-        #    logger.error(e)
+        except Exception as e:
+            logger.error(e)
 
         
         encoder.save(os.path.join(models,"VAE_encoder.h5")) 
