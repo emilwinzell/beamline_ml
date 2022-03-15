@@ -12,6 +12,7 @@ import argparse
 import xml.etree.ElementTree as ET
 import tensorflow as tf
 from tensorflow import keras
+from tensorflow.keras.utils import Sequence
 
 import glob
 
@@ -35,25 +36,26 @@ def load_ellipses(path):
 class My_Generator(Sequence):
 
     def __init__(self, image_filenames, labels, batch_size):
-        self.image_filenames, self.labels = image_filenames, labels
-        self.batch_size = batch_size
+        self.x, self.y = image_filenames, labels
+        self.batch_size = batch_size*9
 
     def __len__(self):
-        return np.ceil(len(self.image_filenames) / float(self.batch_size))
+        return int(np.ceil(len(self.x) / float(self.batch_size)))
 
     def __getitem__(self, idx):
-        batch_x = self.image_filenames[idx * self.batch_size:(idx + 1) * self.batch_size]
-        batch_y = self.labels[idx * self.batch_size:(idx + 1) * self.batch_size]
+        print('Getting items')
+        batch_x = self.x[idx * self.batch_size:(idx + 1) * self.batch_size]
+        batch_y = self.y[idx * self.batch_size:(idx + 1) * self.batch_size]
 
         targets = []
         img3d = []
-        for i,img_name in enumerate(batch_x):
+        for img_name in batch_x:
             img = normalize(cv.imread(img_name,-1))
             img3d.append(img)
             if len(img3d) == 9:
                 targets.append(img3d)
                 img3d = []
-        return np.array(targets), np.array(batch_y)
+        return np.array(targets), np.array(targets)
 
 def build_encoder(width=512,height=512,depth=9,latent_space_dim=5):
     print('ENCODER')
@@ -211,27 +213,32 @@ def normalize(img):
         return img.astype(np.float32)
 
 def main():
-    train = False #CHANGE TO FALSE TO EVALUATE MODEL
+    train = True #CHANGE TO FALSE TO EVALUATE MODEL
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-t", "--timestp",default='/home/emiwin/exjobb/03071514' ,help=" path to timestamp data folder")
     args = parser.parse_args()
 
-    images = os.path.join(args.timestp,'images')
-    xml = os.path.join(args.timestp,'data.xml')
-    tree = ET.parse(xml)
-    root = tree.getroot()
+    #images = os.path.join(args.timestp,'images')
+    #xml = os.path.join(args.timestp,'data.xml')
+    #tree = ET.parse(xml)
+    #root = tree.getroot()
     #targets,labels = load_data(images,root)
 
     list_of_imgs = glob.glob(os.path.join(args.timestp,'*.png'))
-    #labels = load_labels(?? typ xml ??)
+    
 
-    num_samples = len(list_of_imgs)/9
-    num_train = int(num_samples*0.8) # 80% to train
+    if len(list_of_imgs)%9 != 0:
+        print('DATA ERROR, wrong length, ending...')
+        return
+
+    num_samples = len(list_of_imgs)//9
+    num_train = int(num_samples*0.8)*9 # 80% to train
     x_train = list_of_imgs[:num_train]
     x_test = list_of_imgs[num_train:]
-    #y_train = labels[:num_train,:]
-    #y_test = labels[num_train:,:]
+    labels = np.ones((num_samples,5),dtype=np.float32)
+    y_train = labels[:num_train,:]
+    y_test = labels[num_train:,:]
 
     print('loaded {} samples'.format(num_samples))
 
@@ -240,10 +247,10 @@ def main():
     img_size = (512,512)
     depth = 9
     encoder,enc_mu,enc_log_var, shape = build_encoder(width=img_size[0],height=img_size[1],depth=depth,latent_space_dim=latent_space_dim)
-    encoder.summary()
+    #encoder.summary()
 
     decoder = build_decoder(shape,latent_space_dim=latent_space_dim)
-    decoder.summary()
+    #decoder.summary()
 
     vae_input = keras.layers.Input(shape=(depth,img_size[0], img_size[1], 1), name="VAE_input")
     vae_encoder_output = encoder(vae_input)
@@ -269,21 +276,20 @@ def main():
         
         print('STARTING TRAINING')
 
-        batch_size = 20
-        my_training_batch_generator = My_Generator(x_train, [], batch_size)
-        my_validation_batch_generator = My_Generator(x_test, [], batch_size)
-
-
-        try:
+        batch_size = 2
+        my_training_batch_generator = My_Generator(x_train, y_train, batch_size)
+        #my_validation_batch_generator = My_Generator(x_test, y_test, batch_size)
+        
+        #try:
             #vae.fit(x_train, x_train, epochs=100, batch_size=20, shuffle=True, validation_data=(x_test, x_test))
-            vae.fit_generator(generator=my_training_batch_generator,
-                                          steps_per_epoch=(num_train // batch_size),
-                                          epochs=50,
-                                          verbose=1,
-                                          validation_data=my_validation_batch_generator,
-                                          validation_steps=((num_samples-num_train) // batch_size))
-        except Exception as e:
-            logger.error(e)
+        vae.fit(my_training_batch_generator,
+                    steps_per_epoch=(num_train // batch_size),
+                    epochs=50,
+                    verbose=1,
+                    validation_data=(x_test, x_test),
+                    validation_steps=((num_samples-num_train) // batch_size))
+        #except Exception as e:
+        #    logger.error(e)
 
         
         encoder.save(os.path.join(models,"VAE_encoder.h5")) 
