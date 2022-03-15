@@ -4,6 +4,10 @@
 #
 #  Version 2.0
 #  Trained for 100 epochs 20 bsize, still very poor results...
+#
+#
+# Version 2.6 added generator for hadling big datsets
+# trying to train on simple ellipses
 import sys
 #sys.stdout = open('output.txt','wt')
 import os
@@ -38,14 +42,14 @@ class My_Generator(Sequence):
 
     def __init__(self, image_filenames, labels, batch_size):
         self.x, self.y = image_filenames, labels
-        self.batch_size = batch_size*9
+        self.batch_size = batch_size
 
     def __len__(self):
-        return int(np.ceil(len(self.x) / float(self.batch_size)))
+        return int(np.ceil(len(self.x) / float(self.batch_size) / 9))
 
     def __getitem__(self, idx):
-        batch_x = self.x[idx * self.batch_size:(idx + 1) * self.batch_size]
-        batch_y = self.y[idx * self.batch_size:(idx + 1) * self.batch_size]
+        batch_x = self.x[idx * self.batch_size*9:(idx + 1) * self.batch_size*9]
+        batch_y = self.y[idx * self.batch_size*9:(idx + 1) * self.batch_size*9]
 
         targets = []
         img3d = []
@@ -275,10 +279,13 @@ def main():
                 models = os.path.join(args.timestp,'models_{}'.format(n))
         
         print('STARTING TRAINING')
-
+        # Batch generators:
         batch_size = 10
         my_training_batch_generator = My_Generator(x_train, y_train, batch_size)
         #my_validation_batch_generator = My_Generator(x_test, y_test, batch_size)
+
+        # Callbacks:
+        tb = keras.callbacks.TensorBoard(log_dir=os.path.join(args.timestp,'Graph'), histogram_freq=0, write_graph=True, write_images=True)
         
         try:
             #vae.fit(x_train, x_train, epochs=100, batch_size=20, shuffle=True, validation_data=(x_test, x_test))
@@ -287,7 +294,8 @@ def main():
                     epochs=2,
                     verbose=1,
                     validation_data=(x_test, x_test),
-                    validation_steps=((num_samples-num_train) // batch_size))
+                    validation_steps=((num_samples-num_train) // batch_size),
+                    callbacks=[tb])
         except Exception as e:
             logger.error(e)
 
