@@ -6,7 +6,7 @@
 #  Trained for 100 epochs 20 bsize, still very poor results...
 #
 #
-# Version 2.6 added generator for hadling big datsets
+# Version 2.1 added generator for hadling big datsets
 # trying to train on simple ellipses
 import sys
 #sys.stdout = open('output.txt','wt')
@@ -223,23 +223,23 @@ def main():
     parser.add_argument("-t", "--timestp",default='/home/emiwin/exjobb/ellipses' ,help=" path to timestamp data folder")
     args = parser.parse_args()
 
-    #images = os.path.join(args.timestp,'images')
+    images = os.path.join(args.timestp,'images')
     #xml = os.path.join(args.timestp,'data.xml')
     #tree = ET.parse(xml)
     #root = tree.getroot()
     #targets,labels = load_data(images,root)
 
-    list_of_imgs = glob.glob(os.path.join(args.timestp,'*.png'))
+    list_of_imgs = glob.glob(os.path.join(images,'*.png'))
     
 
-    if len(list_of_imgs)%9 != 0:
+    if len(list_of_imgs)%9 != 0 or len(list_of_imgs) == 0:
         print('DATA ERROR, wrong length, ending...')
         return
 
     num_samples = len(list_of_imgs)//9
-    num_train = int(num_samples*0.8)*9 # 80% to train
-    x_train = list_of_imgs[:num_train]
-    x_test = list_of_imgs[num_train:]
+    num_train = int(num_samples*0.8) # 80% to train
+    x_train = list_of_imgs[:num_train*9]
+    x_test = list_of_imgs[num_train*9:]
     labels = np.ones((num_samples,5),dtype=np.float32)
     y_train = labels[:num_train,:]
     y_test = labels[num_train:,:]
@@ -264,7 +264,7 @@ def main():
     vae.summary()
 
     vae.compile(optimizer=keras.optimizers.Adam(learning_rate=0.0005), loss=loss_func(enc_mu, enc_log_var))
-    models = os.path.join(args.timestp,'models_4')   
+    models = os.path.join(args.timestp,'models_1')   
     created_dir = False
     n = 1
 
@@ -282,18 +282,18 @@ def main():
         # Batch generators:
         batch_size = 10
         my_training_batch_generator = My_Generator(x_train, y_train, batch_size)
-        #my_validation_batch_generator = My_Generator(x_test, y_test, batch_size)
+        my_validation_batch_generator = My_Generator(x_test, y_test, batch_size)
 
         # Callbacks:
-        tb = keras.callbacks.TensorBoard(log_dir=os.path.join(args.timestp,'Graph'), histogram_freq=0, write_graph=True, write_images=True)
+        tb = keras.callbacks.TensorBoard(log_dir=os.path.join(models,'Graph'), histogram_freq=0, write_graph=True, write_images=True)
         
         try:
             #vae.fit(x_train, x_train, epochs=100, batch_size=20, shuffle=True, validation_data=(x_test, x_test))
             vae.fit(my_training_batch_generator,
                     steps_per_epoch=(num_train // batch_size),
-                    epochs=2,
+                    epochs=10,
                     verbose=1,
-                    validation_data=(x_test, x_test),
+                    validation_data=my_validation_batch_generator,
                     validation_steps=((num_samples-num_train) // batch_size),
                     callbacks=[tb])
         except Exception as e:
