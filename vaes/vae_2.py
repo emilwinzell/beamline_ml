@@ -8,8 +8,11 @@
 #
 # Version 2.1 added generator for hadling big datsets
 # trying to train on simple ellipses
+# Same results as previously, all values in decoded negative???
+#
+# Version 2.2 latent_space = 10
 import sys
-#sys.stdout = open('output.txt','wt')
+sys.stdout = open('output.txt','wt')
 import os
 import cv2 as cv
 import numpy as np
@@ -247,7 +250,7 @@ def main():
     print('loaded {} samples'.format(num_samples))
 
     
-    latent_space_dim = 5
+    latent_space_dim = 10
     img_size = (512,512)
     depth = 9
     encoder,enc_mu,enc_log_var, shape = build_encoder(width=img_size[0],height=img_size[1],depth=depth,latent_space_dim=latent_space_dim)
@@ -264,9 +267,15 @@ def main():
     vae.summary()
 
     vae.compile(optimizer=keras.optimizers.Adam(learning_rate=0.0005), loss=loss_func(enc_mu, enc_log_var))
-    models = os.path.join(args.timestp,'models_1')   
+    models = os.path.join(args.timestp,'models_3')   
     created_dir = False
     n = 1
+
+    # Batch generators:
+    batch_size = 10
+    my_training_batch_generator = My_Generator(x_train, y_train, batch_size)
+    my_validation_batch_generator = My_Generator(x_test, y_test, batch_size)
+
 
     if train:
         while not created_dir:
@@ -279,11 +288,6 @@ def main():
                 models = os.path.join(args.timestp,'models_{}'.format(n))
         
         print('STARTING TRAINING')
-        # Batch generators:
-        batch_size = 10
-        my_training_batch_generator = My_Generator(x_train, y_train, batch_size)
-        my_validation_batch_generator = My_Generator(x_test, y_test, batch_size)
-
         # Callbacks:
         tb = keras.callbacks.TensorBoard(log_dir=os.path.join(models,'Graph'), histogram_freq=0, write_graph=True, write_images=True)
         
@@ -291,7 +295,7 @@ def main():
             #vae.fit(x_train, x_train, epochs=100, batch_size=20, shuffle=True, validation_data=(x_test, x_test))
             vae.fit(my_training_batch_generator,
                     steps_per_epoch=(num_train // batch_size),
-                    epochs=10,
+                    epochs=15,
                     verbose=1,
                     validation_data=my_validation_batch_generator,
                     validation_steps=((num_samples-num_train) // batch_size),
@@ -308,7 +312,10 @@ def main():
     else:
         encoder.load_weights(os.path.join(models,'encoder_weights.h5'))
         decoder.load_weights(os.path.join(models,'decoder_weights.h5'))
-
+        
+        (x_test,_) = my_validation_batch_generator.__getitem__(0)
+        print(x_test.shape)
+        
         encoded_data = encoder.predict(x_test)
         decoded_data = decoder.predict(encoded_data)
 
@@ -318,14 +325,17 @@ def main():
         for n in range(10):
             for i in range(9):
                 img = decoded_data[n,i,:,:,:]
-                img[img < 0] = 0
-                #rint(img)
-                if img.max() > 0:
-                    img = img*65535.0/img.max() 
-                img = img.astype(np.uint16)
-                cv.imshow('Input',img)
-                print(y_test[n,:])
-                print(encoded_data[n,:])
+                org = x_test[n,i,:,:]
+                #img[img < 0] = 0
+                img = abs(img)
+                print(img.max())
+                img = img*255/img.max()
+                org = org*255
+                img = img.astype(np.uint8)
+                org = org.astype(np.uint8)
+                print(org.max())
+                cv.imshow('Decoded',img)
+                cv.imshow('Org',org)
                 cv.waitKey(0)
 
 
