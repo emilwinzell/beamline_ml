@@ -8,9 +8,10 @@
 #
 # Version 2.1 added generator for hadling big datsets
 # trying to train on simple ellipses
-# Same results as previously, all values in decoded negative???
+# Same results as previously, all values in decoded negative??? Turns out it was heavily overtrained...
 #
 # Version 2.2 latent_space = 10
+# Version 2.3 Early stopping, new rec loss factor
 import sys
 sys.stdout = open('output.txt','wt')
 import os
@@ -163,7 +164,7 @@ def build_decoder(shape,latent_space_dim=5):
 
 def loss_func(encoder_mu, encoder_log_variance):
     def vae_reconstruction_loss(y_true, y_predict):
-        reconstruction_loss_factor = 1
+        reconstruction_loss_factor = 10e6
         reconstruction_loss = keras.backend.mean(keras.backend.square(y_true-y_predict), axis=[1, 2, 3])
         return reconstruction_loss_factor * reconstruction_loss
 
@@ -289,8 +290,8 @@ def main():
         
         print('STARTING TRAINING')
         # Callbacks:
-        tb = keras.callbacks.TensorBoard(log_dir=os.path.join(models,'Graph'), histogram_freq=0, write_graph=True, write_images=True)
-        
+        tb = keras.callbacks.TensorBoard(log_dir=os.path.join(models,'logs'), histogram_freq=0, write_graph=True, write_images=True)
+        es = keras.callbacks.EarlyStopping(monitor="val_loss",patience=2,restore_best_weights=True)
         try:
             #vae.fit(x_train, x_train, epochs=100, batch_size=20, shuffle=True, validation_data=(x_test, x_test))
             vae.fit(my_training_batch_generator,
@@ -299,7 +300,7 @@ def main():
                     verbose=1,
                     validation_data=my_validation_batch_generator,
                     validation_steps=((num_samples-num_train) // batch_size),
-                    callbacks=[tb])
+                    callbacks=[tb,es])
         except Exception as e:
             logger.error(e)
 
