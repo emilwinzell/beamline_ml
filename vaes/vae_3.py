@@ -57,7 +57,7 @@ class Sampling(keras.layers.Layer):
         return z_mean + tf.exp(0.5 * z_log_var) * epsilon
 
 
-class VAE(keras.models.Model):
+class VAE(keras.Model):
     def __init__(self, encoder, decoder, **kwargs):
         super(VAE, self).__init__(**kwargs)
         self.encoder = encoder
@@ -100,6 +100,31 @@ class VAE(keras.models.Model):
             "reconstruction_loss": self.reconstruction_loss_tracker.result(),
             "kl_loss": self.kl_loss_tracker.result(),
         }
+
+    def test_step(self, data):
+      if isinstance(data, tuple):
+        data = data[0]
+
+      z_mean, z_log_var, z = self.encoder(data)
+      reconstruction = self.decoder(z)
+      reconstruction = tf.squeeze(reconstruction)
+      reconstruction_loss = tf.reduce_mean(
+                tf.reduce_sum(
+                    keras.losses.binary_crossentropy(data, reconstruction), axis=(1, 2)
+                )
+            )
+      kl_loss = -0.5 * (1 + z_log_var - tf.square(z_mean) - tf.exp(z_log_var))
+      kl_loss = tf.reduce_mean(tf.reduce_sum(kl_loss, axis=1))
+      total_loss = reconstruction_loss + kl_loss
+      return {
+          "loss": total_loss,
+          "reconstruction_loss": reconstruction_loss,
+          "kl_loss": kl_loss,
+      }
+
+    #def call(self, inputs, training=None, mask=None):
+    #    _,_,z = self.encoder(inputs=inputs, training=training, mask=mask)
+    #    return self.decoder(z)
 
 
 def build_encoder(width=512,height=512,depth=9,latent_space_dim=5):
@@ -252,7 +277,7 @@ def main():
     n = 1
 
     # Batch generators:
-    batch_size = 2
+    batch_size = 10
     my_training_batch_generator = My_Generator(x_train, y_train, batch_size)
     my_validation_batch_generator = My_Generator(x_test, y_test, batch_size)
 
@@ -274,7 +299,7 @@ def main():
         try:
             vae.fit(my_training_batch_generator,
                     steps_per_epoch=(num_train // batch_size),
-                    epochs=15,
+                    epochs=10,
                     verbose=1,
                     validation_data=my_validation_batch_generator,
                     validation_steps=((num_samples-num_train) // batch_size),
