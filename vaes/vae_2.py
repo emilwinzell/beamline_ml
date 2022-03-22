@@ -12,6 +12,7 @@
 #
 # Version 2.2 latent_space = 10
 # Version 2.3 Early stopping, new rec loss factor
+# Version 2.4 New loss function
 import sys
 sys.stdout = open('output.txt','wt')
 import os
