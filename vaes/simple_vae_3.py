@@ -18,7 +18,7 @@ from tensorflow.keras.utils import Sequence
 import glob
 
 import logging
-logging.basicConfig(filename='./vae_3.log', level=logging.DEBUG)
+logging.basicConfig(filename='./simple_vae_3.log', level=logging.DEBUG)
 logger=logging.getLogger(__name__)
 
 
@@ -75,6 +75,7 @@ class VAE(keras.Model):
     def __loss_fcn(self,data):
         z_mean, z_log_var, z = self.encoder(data)
         reconstruction = self.decoder(z)
+        reconstruction = tf.squeeze(reconstruction)
 
         reconstruction_loss = tf.reduce_mean(
                 tf.reduce_sum(

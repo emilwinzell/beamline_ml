@@ -3,7 +3,7 @@
 # Trying differnet implementation
 # from: https://keras.io/examples/generative/vae/?msclkid=0a8e33e0a5ff11ecab29a7e68ba38092
 #
-# Still nothing in the decoded images
+# Still nothing in the decoded images, noticed error in loss function in reconstruction error.
 #
 import sys
 #sys.stdout = open('output.txt','wt')
@@ -89,9 +89,10 @@ class VAE(keras.Model):
         z_mean, z_log_var, z = self.encoder(data)
         reconstruction = self.decoder(z)
         reconstruction = tf.squeeze(reconstruction)
+        # sums up across depth, width and height, then mean over batch 
         reconstruction_loss = tf.reduce_mean(
                 tf.reduce_sum(
-                    keras.losses.binary_crossentropy(data, reconstruction), axis=(1, 2)
+                    keras.losses.binary_crossentropy(data, reconstruction), axis=(1, 2, 3) 
                 )
             )
         kl_loss = -0.5 * (1 + z_log_var - tf.square(z_mean) - tf.exp(z_log_var))
