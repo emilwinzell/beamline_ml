@@ -5,6 +5,8 @@
 #
 # Still nothing in the decoded images, noticed error in loss function in reconstruction error.
 #
+#
+#
 import sys
 #sys.stdout = open('output.txt','wt')
 import os
@@ -90,11 +92,7 @@ class VAE(keras.Model):
         reconstruction = self.decoder(z)
         reconstruction = tf.squeeze(reconstruction)
         # sums up across depth, width and height, then mean over batch 
-        reconstruction_loss = tf.reduce_mean(
-                tf.reduce_sum(
-                    keras.losses.binary_crossentropy(data, reconstruction), axis=(1, 2, 3) 
-                )
-            )
+        reconstruction_loss = tf.reduce_mean(tf.reduce_sum(tf.square(data-reconstruction),axis=(1,2,3)))
         kl_loss = -0.5 * (1 + z_log_var - tf.square(z_mean) - tf.exp(z_log_var))
         kl_loss = tf.reduce_mean(tf.reduce_sum(kl_loss, axis=1))
         total_loss = reconstruction_loss + kl_loss
@@ -259,10 +257,10 @@ def main():
     img_size = (512,512)
     depth = 9
     encoder, shape = build_encoder(width=img_size[0],height=img_size[1],depth=depth,latent_space_dim=latent_space_dim)
-    encoder.summary()
+    #encoder.summary()
 
     decoder = build_decoder(shape,latent_space_dim=latent_space_dim)
-    decoder.summary()
+    #decoder.summary()
 
     vae = VAE(encoder, decoder)
 
