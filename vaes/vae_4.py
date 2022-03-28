@@ -235,14 +235,28 @@ def build_encoder(width=256,height=256,depth=9,latent_space_dim=5):
             kernel_initializer = 'glorot_normal',
             activation = 'elu')(enc_flatten))
 
-    encoder_mu = keras.layers.Dense(units=latent_space_dim, name="encoder_mu")(x)
-    encoder_log_variance = keras.layers.Dense(units=latent_space_dim, name="encoder_log_variance")(x)
+    encoder_mu = keras.layers.BatchNormalization()(
+                    keras.layers.Dense(
+                        units = latent_space_dim,
+                        kernel_initializer = 'glorot_normal',
+                        activation = None,
+                        name="encoder_mu"))(x)
+    encoder_log_variance = keras.layers.BatchNormalization()(
+                            keras.layers.Dense(
+                                units = latent_space_dim,
+                                kernel_initializer = 'glorot_normal',
+                                activation = None,
+                                name="encoder_mu"))(x)
 
     z = Sampling()([encoder_mu,encoder_log_variance])
 
     model = keras.models.Model(encoder_input, [encoder_mu, encoder_log_variance, z], name="encoder_model")
 
-    return model,shape_before_flatten
+    return {'encoder': model,
+            'shape': shape_before_flatten,
+            'inputs': encoder_input,
+            'mu':encoder_mu,
+            'sigma':encoder_log_variance}
 
 
 def build_decoder(shape,latent_space_dim=5):
@@ -392,16 +406,17 @@ def main():
     latent_space_dim = 10
     img_size = (256,256)
     depth = 9
-    encoder, shape = build_encoder(width=img_size[0],height=img_size[1],depth=depth,latent_space_dim=latent_space_dim)
+    enc_mod = build_encoder(width=img_size[0],height=img_size[1],depth=depth,latent_space_dim=latent_space_dim)
+    encoder = enc_mod['encoder']
     #encoder.summary()
 
-    decoder = build_decoder(shape,latent_space_dim=latent_space_dim)
+    decoder = build_decoder(enc_mod['shape'],latent_space_dim=latent_space_dim)
     #decoder.summary()
     #keras.utils.plot_model(encoder, to_file = 'vae_encoder.pdf', show_shapes = True)
     #keras.utils.plot_model(decoder, to_file = 'vae_decoder.pdf', show_shapes = True)
 
 
-    vae = VAE(encoder, decoder)
+    vae = VAE(encoder['encoder'], decoder)
 
     sgd = keras.optimizers.SGD(lr = 0.0001, momentum = 0.9, nesterov = True)
     vae.compile(optimizer=sgd)#,run_eagerly=True)
