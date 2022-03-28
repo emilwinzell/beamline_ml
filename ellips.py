@@ -4,32 +4,30 @@ import numpy as np
 
 
 def generate_data(num_samples):
-    path = 'C:\\Users\\emiwin\\exjobb\\ellipses'
+    path = 'C:\\Users\\emiwin\\exjobb\\ellipses2'
     try:
         os.mkdir(path)
     except OSError:
         print('whoops')
 
     ang = np.linspace(-2,2,9)
-    ax = np.ones(9) + abs(np.linspace(-0.2,0.2,9))
-    c = np.linspace(200,-200,9)
+    ax = np.ones(9) + abs(np.linspace(-0.3,0.3,9))
+    c = np.linspace(2,-2,9) #200,200
 
 
     for i in range(num_samples):
-        ax1 = np.random.uniform(10,200)
-        ax2 = np.random.uniform(10,200)
+        ax1 = np.random.uniform(10,100)
+        ax2 = np.random.uniform(10,100)
         angle = np.random.uniform(-30,30)
-        c1 = np.random.uniform(100,412)
-        c2 = np.random.uniform(100,412)
+        c1 = np.random.uniform(225,275) # 100,412
+        c2 = np.random.uniform(225,275)
 
         for n in range(9):
             name = os.path.join(path,'ellips_'  + str(i).zfill(5) + '_' + str(n).zfill(2) + '.png')
             img = np.zeros(shape=(512,512), dtype=np.uint8)
 
-            
-
             img = cv.ellipse(img,center=(int(c1+c[n]),int(c2)),axes=(int(ax1*ax[n]),int(ax2*ax[n])),angle=int(angle*ang[n]),
-                                startAngle=180,endAngle=-180,color=255,thickness=2)
+                                startAngle=180,endAngle=-180,color=235,thickness=-1)
 
             cv.imwrite(name,img)
 
