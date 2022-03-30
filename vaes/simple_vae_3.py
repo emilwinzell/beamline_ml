@@ -76,14 +76,16 @@ class VAE(keras.Model):
         z_mean, z_log_var, z = self.encoder(data)
         reconstruction = self.decoder(z)
         reconstruction = tf.squeeze(reconstruction)
-
+        #print(reconstruction.shape)
+        #reconstruction_loss = tf.reduce_mean(tf.reduce_sum(tf.square(data-reconstruction),axis=(1,2)))
         reconstruction_loss = tf.reduce_mean(
                 tf.reduce_sum(
-                    keras.losses.binary_crossentropy(data, reconstruction), axis=(1, 2)
+                    keras.losses.binary_crossentropy(data, reconstruction), axis=1
                 )
             )
+        kl_factor = 1
         kl_loss = -0.5 * (1 + z_log_var - tf.square(z_mean) - tf.exp(z_log_var))
-        kl_loss = tf.reduce_mean(tf.reduce_sum(kl_loss, axis=1))
+        kl_loss = tf.reduce_mean(tf.reduce_sum(kl_loss, axis=1))*kl_factor
         total_loss = reconstruction_loss + kl_loss
 
         return reconstruction_loss, kl_loss, total_loss
@@ -91,6 +93,7 @@ class VAE(keras.Model):
 
 
     def train_step(self, data):
+        print(data.shape)
         with tf.GradientTape() as tape:
             reconstruction_loss, kl_loss, total_loss = self.__loss_fcn(data)
         
@@ -221,6 +224,12 @@ def normalize(img):
     else:
         return img.astype(np.float32)
 
+def scheduler(epoch,lr):
+    if epoch < 25:
+        return lr
+    else:
+        return lr * tf.math.exp(-0.05)
+
 def main():
     train = True #CHANGE TO FALSE TO EVALUATE MODEL
 
@@ -234,7 +243,7 @@ def main():
     #root = tree.getroot()
     #targets,labels = load_data(images,root)
 
-    list_of_imgs = glob.glob(os.path.join(images,'*.png'))[:100]
+    list_of_imgs = glob.glob(os.path.join(images,'*.png'))
     
 
     num_samples = len(list_of_imgs)
@@ -256,17 +265,20 @@ def main():
     decoder = build_decoder(shape,latent_space_dim=latent_space_dim)
     #decoder.summary()
 
-    vae = VAE(encoder, decoder)
 
-    vae.compile(optimizer=keras.optimizers.Adam(learning_rate=0.0005))
-
-
-    models = os.path.join(args.timestp,'models_1')   
-    created_dir = False
+    models = os.path.join(args.timestp,'models_8')   
+    created_dir = True
     n = 1
 
+    encoder.load_weights(os.path.join(models,'encoder_weights2.h5'))
+    decoder.load_weights(os.path.join(models,'decoder_weights2.h5'))
+
+    vae = VAE(encoder, decoder)
+
+    vae.compile(optimizer=keras.optimizers.Adam(learning_rate=0.005),run_eagerly=False)
+
     # Batch generators:
-    batch_size = 10
+    batch_size = 100
     my_training_batch_generator = My_Generator(x_train, y_train, batch_size)
     my_validation_batch_generator = My_Generator(x_test, y_test, batch_size)
 
@@ -286,11 +298,13 @@ def main():
         print('STARTING TRAINING')
         # Callbacks:
         tb = keras.callbacks.TensorBoard(log_dir=os.path.join(models,'logs'), histogram_freq=0, write_graph=True, write_images=True)
-        es = keras.callbacks.EarlyStopping(monitor="val_loss",patience=2,restore_best_weights=True)
+        es = keras.callbacks.EarlyStopping(monitor="val_loss",min_delta=0,patience=7,restore_best_weights=True)
+        lrs = tf.keras.callbacks.LearningRateScheduler(scheduler)
         try:
             vae.fit(my_training_batch_generator,
                     steps_per_epoch=(num_train // batch_size),
-                    epochs=1,
+                    epochs=65,
+                    initial_epoch=31,
                     verbose=1,
                     validation_data=my_validation_batch_generator,
                     validation_steps=((num_samples-num_train) // batch_size),
@@ -300,11 +314,11 @@ def main():
             return
 
         
-        encoder.save(os.path.join(models,"VAE_encoder")) 
-        decoder.save(os.path.join(models,"VAE_decoder"))
+        encoder.save(os.path.join(models,"VAE_encoder2")) 
+        decoder.save(os.path.join(models,"VAE_decoder2"))
         #vae.save(os.path.join(models,"VAE.h5"))
-        encoder.save_weights(os.path.join(models,'encoder_weights.h5'))
-        decoder.save_weights(os.path.join(models,'decoder_weights.h5'))
+        encoder.save_weights(os.path.join(models,'encoder_weights2.h5'))
+        decoder.save_weights(os.path.join(models,'decoder_weights2.h5'))
     else:
         #encoder =  keras.models.load_model(os.path.join(models,'VAE_encoder'))
         #decoder =  keras.models.load_model(os.path.join(models,'VAE_decoder'))
@@ -321,21 +335,20 @@ def main():
         encoded_data = encoder.predict(x_test)
         decoded_data = decoder.predict(encoded_data[2])
 
-        for n in range(10):
-            for i in range(9):
-                img = decoded_data[n,i,:,:,:]
-                org = x_test[n,i,:,:]
-                img[img < 0] = 0
-                #img = abs(img)
-                print(img.max())
-                img = img*255/img.max()
-                org = org*255
-                img = img.astype(np.uint8)
-                org = org.astype(np.uint8)
-                print(org.max())
-                cv.imshow('Decoded',img)
-                cv.imshow('Org',org)
-                cv.waitKey(0)
+        for n in range(100):
+            img = decoded_data[n,:,:,:]
+            org = x_test[n,:,:]
+            img[img < 0] = 0
+            #img = abs(img)
+            print(img.max())
+            img = img*255/img.max()
+            org = org*255
+            img = img.astype(np.uint8)
+            org = org.astype(np.uint8)
+            print(org.max())
+            cv.imshow('Decoded',img)
+            cv.imshow('Org',org)
+            cv.waitKey(0)
 
 
 if __name__ == '__main__':
