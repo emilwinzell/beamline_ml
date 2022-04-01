@@ -15,7 +15,10 @@ import xml.etree.ElementTree as ET
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras.utils import Sequence
+from tensorflow.keras import backend as K
 import glob
+import random
+import math
 
 import logging
 logging.basicConfig(filename='./simple_vae_3.log', level=logging.DEBUG)
@@ -31,13 +34,24 @@ class My_Generator(Sequence):
     def __len__(self):
         return int(np.ceil(len(self.x) / float(self.batch_size)))
 
+    def __normalize__(self,img,bytes=8):
+        m = float(2**bytes-1)
+        if img.max() > 0:
+            norm_img = img.astype(np.float32)
+            norm_img = norm_img/m
+            return norm_img
+        else:
+            return img.astype(np.float32)
+
     def __getitem__(self, idx):
         batch_x = self.x[idx * self.batch_size:(idx + 1) * self.batch_size]
         batch_y = self.y[idx * self.batch_size:(idx + 1) * self.batch_size]
 
         targets = []
         for img_name in batch_x:
-            img = normalize(cv.imread(img_name,-1))
+            img = self.__normalize__(cv.imread(img_name,0))
+            img = cv.blur(img,(5,5))
+            img = cv.resize(img,(256,256))
             targets.append(img)
         return np.array(targets)
 
@@ -72,21 +86,22 @@ class VAE(keras.Model):
             self.kl_loss_tracker,
         ]
 
+    def weighted_binary_crossentropy(self,target, output):
+        loss = -(85.0 * target * K.log(output) + 15.0 * (1.0 - target) * K.log(1.0 - output)) / 100.0
+        return loss
+
     def __loss_fcn(self,data):
         z_mean, z_log_var, z = self.encoder(data)
         reconstruction = self.decoder(z)
         reconstruction = tf.squeeze(reconstruction)
         #print(reconstruction.shape)
         #reconstruction_loss = tf.reduce_mean(tf.reduce_sum(tf.square(data-reconstruction),axis=(1,2)))
-        reconstruction_loss = tf.reduce_mean(
-                tf.reduce_sum(
-                    keras.losses.binary_crossentropy(data, reconstruction), axis=1
-                )
-            )
-        kl_factor = 1
-        kl_loss = -0.5 * (1 + z_log_var - tf.square(z_mean) - tf.exp(z_log_var))
-        kl_loss = tf.reduce_mean(tf.reduce_sum(kl_loss, axis=1))*kl_factor
-        total_loss = reconstruction_loss + kl_loss
+        reconstruction_loss = K.mean(self.weighted_binary_crossentropy(data, K.clip(reconstruction, 1e-7, 1.0 - 1e-7)))
+               
+        kl_factor = 10
+        kl_loss = -0.5 * K.mean(1 + z_log_var - K.square(z_mean) - K.exp(z_log_var))*kl_factor
+        #kl_loss = tf.reduce_mean(tf.reduce_sum(kl_loss, axis=1))*kl_factor
+        total_loss = 45000.0/200.0*(reconstruction_loss + kl_loss)
 
         return reconstruction_loss, kl_loss, total_loss
 
@@ -163,7 +178,7 @@ def build_encoder(width=512,height=512,latent_space_dim=5):
 
     shape_before_flatten = keras.backend.int_shape(x)[1:]
     enc_flatten = keras.layers.Flatten()(x)
-    x = keras.layers.Dense(32,activation="relu")(enc_flatten)
+    x = keras.layers.Dense(np.prod(shape_before_flatten),activation="relu")(enc_flatten)
 
     encoder_mu = keras.layers.Dense(units=latent_space_dim, name="encoder_mu")(x)
     encoder_log_variance = keras.layers.Dense(units=latent_space_dim, name="encoder_log_variance")(x)
@@ -224,17 +239,20 @@ def normalize(img):
     else:
         return img.astype(np.float32)
 
-def scheduler(epoch,lr):
-    if epoch < 25:
-        return lr
-    else:
-        return lr * tf.math.exp(-0.05)
+def scheduler(epoch):
+   epoch = epoch-43
+   initial_lrate = 0.01
+   drop = 0.5
+   epochs_drop = 10.0
+   lrate = initial_lrate * math.pow(drop,  
+           math.floor((1+epoch)/epochs_drop))
+   return lrate
 
 def main():
     train = True #CHANGE TO FALSE TO EVALUATE MODEL
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("-t", "--timestp",default='/home/emiwin/exjobb/ellipses' ,help=" path to timestamp data folder")
+    parser.add_argument("-t", "--timestp",default='/home/emiwin/exjobb/ellipses2' ,help=" path to timestamp data folder")
     args = parser.parse_args()
 
     images = os.path.join(args.timestp,'images')
@@ -253,12 +271,14 @@ def main():
     labels = np.ones((num_samples,5),dtype=np.float32)
     y_train = labels[:num_train,:]
     y_test = labels[num_train:,:]
-
+	
+    random.shuffle(x_train)
+    len(x_train)
     print('loaded {} samples'.format(num_samples))
 
     
     latent_space_dim = 10
-    img_size = (512,512)
+    img_size = (256,256)
     encoder, shape = build_encoder(width=img_size[0],height=img_size[1],latent_space_dim=latent_space_dim)
     #encoder.summary()
 
@@ -266,19 +286,20 @@ def main():
     #decoder.summary()
 
 
-    models = os.path.join(args.timestp,'models_8')   
+    models = os.path.join(args.timestp,'models_1')   
     created_dir = True
     n = 1
 
-    encoder.load_weights(os.path.join(models,'encoder_weights2.h5'))
-    decoder.load_weights(os.path.join(models,'decoder_weights2.h5'))
+    encoder.load_weights(os.path.join(models,'encoder_weights4.h5'))
+    decoder.load_weights(os.path.join(models,'decoder_weights4.h5'))
 
     vae = VAE(encoder, decoder)
-
-    vae.compile(optimizer=keras.optimizers.Adam(learning_rate=0.005),run_eagerly=False)
+    sgd = keras.optimizers.SGD(lr = 0.005, momentum = 0.6, nesterov = True)
+    vae.compile(optimizer=sgd)
+    #vae.compile(optimizer=keras.optimizers.Adam(learning_rate=0.005),run_eagerly=False)
 
     # Batch generators:
-    batch_size = 100
+    batch_size = 200
     my_training_batch_generator = My_Generator(x_train, y_train, batch_size)
     my_validation_batch_generator = My_Generator(x_test, y_test, batch_size)
 
@@ -297,15 +318,15 @@ def main():
         
         print('STARTING TRAINING')
         # Callbacks:
-        tb = keras.callbacks.TensorBoard(log_dir=os.path.join(models,'logs'), histogram_freq=0, write_graph=True, write_images=True)
-        es = keras.callbacks.EarlyStopping(monitor="val_loss",min_delta=0,patience=7,restore_best_weights=True)
+        tb = keras.callbacks.TensorBoard(log_dir=os.path.join(models,'logs4'), histogram_freq=0, write_graph=True, write_images=True)
+        es = keras.callbacks.EarlyStopping(monitor="val_loss",min_delta=0,patience=20,restore_best_weights=True)
         lrs = tf.keras.callbacks.LearningRateScheduler(scheduler)
         try:
             vae.fit(my_training_batch_generator,
                     steps_per_epoch=(num_train // batch_size),
-                    epochs=65,
-                    initial_epoch=31,
-                    verbose=1,
+                    epochs=200,
+                    initial_epoch=118,
+                    #verbose=1,
                     validation_data=my_validation_batch_generator,
                     validation_steps=((num_samples-num_train) // batch_size),
                     callbacks=[tb,es])
@@ -314,18 +335,18 @@ def main():
             return
 
         
-        encoder.save(os.path.join(models,"VAE_encoder2")) 
-        decoder.save(os.path.join(models,"VAE_decoder2"))
+        encoder.save(os.path.join(models,"VAE_encoder5.2")) 
+        decoder.save(os.path.join(models,"VAE_decoder5.2"))
         #vae.save(os.path.join(models,"VAE.h5"))
-        encoder.save_weights(os.path.join(models,'encoder_weights2.h5'))
-        decoder.save_weights(os.path.join(models,'decoder_weights2.h5'))
+        encoder.save_weights(os.path.join(models,'encoder_weights5.2.h5'))
+        decoder.save_weights(os.path.join(models,'decoder_weights5.2.h5'))
     else:
         #encoder =  keras.models.load_model(os.path.join(models,'VAE_encoder'))
         #decoder =  keras.models.load_model(os.path.join(models,'VAE_decoder'))
         #vae = VAE(encoder, decoder)
         #vae.compile(optimizer=keras.optimizers.Adam(learning_rate=0.0005))
-        encoder.load_weights(os.path.join(models,'encoder_weights.h5'))
-        decoder.load_weights(os.path.join(models,'decoder_weights.h5'))
+        encoder.load_weights(os.path.join(models,'encoder_weights5.1.h5'))
+        decoder.load_weights(os.path.join(models,'decoder_weights5.1.h5'))
         #encoder.save_weights(os.path.join(models,'encoder_weights.h5'))
         #decoder.save_weights(os.path.join(models,'decoder_weights.h5'))
         
