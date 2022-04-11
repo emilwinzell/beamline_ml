@@ -48,11 +48,12 @@ class My_Generator(Sequence):
         batch_y = self.y[idx * self.batch_size:(idx + 1) * self.batch_size]
 
         targets = []
-        for img_name in batch_x:
-            img = self.__normalize__(cv.imread(img_name,0))
-            img = cv.blur(img,(5,5))
-            img = cv.resize(img,(256,256))
-            targets.append(img)
+        for img in batch_x:
+            #img = self.__normalize__(cv.imread(img_name,0))
+            #img = cv.blur(img,(5,5))
+            img = cv.resize(img,(256,256)) 
+            nimg = self.__normalize__(img)
+            targets.append(nimg)
         return np.array(targets)
 
 
@@ -94,14 +95,18 @@ class VAE(keras.Model):
         z_mean, z_log_var, z = self.encoder(data)
         reconstruction = self.decoder(z)
         reconstruction = tf.squeeze(reconstruction)
-        #print(reconstruction.shape)
-        #reconstruction_loss = tf.reduce_mean(tf.reduce_sum(tf.square(data-reconstruction),axis=(1,2)))
-        reconstruction_loss = K.mean(self.weighted_binary_crossentropy(data, K.clip(reconstruction, 1e-7, 1.0 - 1e-7)))
-               
-        kl_factor = 10
-        kl_loss = -0.5 * K.mean(1 + z_log_var - K.square(z_mean) - K.exp(z_log_var))*kl_factor
-        #kl_loss = tf.reduce_mean(tf.reduce_sum(kl_loss, axis=1))*kl_factor
-        total_loss = 45000.0/200.0*(reconstruction_loss + kl_loss)
+        reconstruction_loss = tf.reduce_mean(
+                tf.reduce_sum(
+                    self.weighted_binary_crossentropy(data, K.clip(reconstruction, 1e-7, 1.0 - 1e-7)), axis=(1, 2)
+                )
+            )
+        kl_loss = -0.5 * (1 + z_log_var - tf.square(z_mean) - tf.exp(z_log_var))
+        kl_loss = tf.reduce_mean(tf.reduce_sum(kl_loss, axis=1))
+        
+        #reconstruction_loss = K.mean(self.weighted_binary_crossentropy(data, K.clip(reconstruction, 1e-7, 1.0 - 1e-7)))     
+        #kl_factor = 1
+        #kl_loss = -0.5 * K.mean(1 + z_log_var - K.square(z_mean) - K.exp(z_log_var))*kl_factor
+        total_loss = reconstruction_loss + kl_loss
 
         return reconstruction_loss, kl_loss, total_loss
 
@@ -260,7 +265,7 @@ def main():
     #tree = ET.parse(xml)
     #root = tree.getroot()
     #targets,labels = load_data(images,root)
-
+    """
     list_of_imgs = glob.glob(os.path.join(images,'*.png'))
     
 
@@ -275,7 +280,10 @@ def main():
     random.shuffle(x_train)
     len(x_train)
     print('loaded {} samples'.format(num_samples))
-
+    """
+    (x_train,y_train),(x_test,y_test)=keras.datasets.mnist.load_data()
+    num_train = len(x_train)
+    num_samples = len(x_test)+num_train
     
     latent_space_dim = 10
     img_size = (256,256)
@@ -290,13 +298,13 @@ def main():
     created_dir = True
     n = 1
 
-    encoder.load_weights(os.path.join(models,'encoder_weights4.h5'))
-    decoder.load_weights(os.path.join(models,'decoder_weights4.h5'))
+    #encoder.load_weights(os.path.join(models,'encoder_weights4.h5'))
+    #decoder.load_weights(os.path.join(models,'decoder_weights4.h5'))
 
     vae = VAE(encoder, decoder)
     sgd = keras.optimizers.SGD(lr = 0.005, momentum = 0.6, nesterov = True)
-    vae.compile(optimizer=sgd)
-    #vae.compile(optimizer=keras.optimizers.Adam(learning_rate=0.005),run_eagerly=False)
+    #vae.compile(optimizer=sgd)
+    vae.compile(optimizer=keras.optimizers.Adam(learning_rate=0.005),run_eagerly=False)
 
     # Batch generators:
     batch_size = 200
@@ -325,7 +333,7 @@ def main():
             vae.fit(my_training_batch_generator,
                     steps_per_epoch=(num_train // batch_size),
                     epochs=200,
-                    initial_epoch=118,
+                    #initial_epoch=118,
                     #verbose=1,
                     validation_data=my_validation_batch_generator,
                     validation_steps=((num_samples-num_train) // batch_size),
@@ -335,11 +343,11 @@ def main():
             return
 
         
-        encoder.save(os.path.join(models,"VAE_encoder5.2")) 
-        decoder.save(os.path.join(models,"VAE_decoder5.2"))
+        encoder.save(os.path.join(models,"VAE_encoder")) 
+        decoder.save(os.path.join(models,"VAE_decoder"))
         #vae.save(os.path.join(models,"VAE.h5"))
-        encoder.save_weights(os.path.join(models,'encoder_weights5.2.h5'))
-        decoder.save_weights(os.path.join(models,'decoder_weights5.2.h5'))
+        encoder.save_weights(os.path.join(models,'encoder_weights.h5'))
+        decoder.save_weights(os.path.join(models,'decoder_weights.h5'))
     else:
         #encoder =  keras.models.load_model(os.path.join(models,'VAE_encoder'))
         #decoder =  keras.models.load_model(os.path.join(models,'VAE_decoder'))
