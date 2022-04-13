@@ -19,7 +19,7 @@ import xrt.backends.raycing.materials as rm
 
 import numpy as np
 import cv2 as cv
-import gym
+#import gym
 from scipy import optimize
 
 import matplotlib as mpl
@@ -398,7 +398,7 @@ class VeritasSimpleBeamline(raycing.BeamLine):
     
 # Environment class
 #
-class RaycingEnv(gym.Env):
+class RaycingEnv():
     # Raycing env
     # state: (min fwhm and fwhm gap) 3 params
     # actions: 2*5=10

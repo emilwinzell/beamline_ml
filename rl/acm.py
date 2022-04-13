@@ -2,17 +2,21 @@
 # Inital RL model from: https://keras.io/examples/rl/actor_critic_cartpole/
 # Actor critic, will maybe expand to DDPG 
 #
-from secrets import choice
+#from secrets import choice
+import sys
+#sys.stdout = open('acm_output.txt','wt')
+
 import xrt.backends.raycing.run as rr
 import xrt.plotter as xrtp
 import xrt.runner as xrtr
+
 
 import numpy as np
 import cv2 as cv
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
-import gym
+#import gym
 import scipy.signal
 import time
 from scipy import optimize
@@ -21,7 +25,7 @@ from vsb import VeritasSimpleBeamline
 
 # Environment class
 #
-class RaycingEnv(gym.Env):
+class RaycingEnv():
     # Raycing env
     # state: (min fwhm and fwhm gap) 3 params
     # actions: 2*5=10
@@ -71,7 +75,7 @@ class RaycingEnv(gym.Env):
         self.params=[0.0,0.0,0.0,0.0,0.0]
         self.num_steps = 0
         self.step(beamline) # take 0 action step
-        print('reset.. state is:', self.state)
+        #print('reset.. state is:', self.state)
         return self.state
 
     def step(self,beamline):
@@ -152,7 +156,7 @@ def train(beamline,env,model,num_actions):
         # print(beamline.M4.center)
         # print('---------------')
         xrtr.run_ray_tracing(beamline.plots,repeats=beamline.repeats, 
-                            updateEvery=beamline.repeats, beamLine=beamline)
+                            updateEvery=beamline.repeats, beamLine=beamline,threads=3,processes=8)
         state = env.reset(beamline)
         episode_reward = 0
         with tf.GradientTape() as tape:
@@ -179,15 +183,15 @@ def train(beamline,env,model,num_actions):
 
                 # Apply the sampled action in our environment
                 env.params[action[0]] += action[1]*env.steps[action[0]]
-                print('in step, params: ', env.params)
+                #print('in step, params: ', env.params)
                 beamline.update_m4(env.params)
                 
                 #Return to ray tracing
                 xrtr.run_ray_tracing(beamline.plots,repeats=beamline.repeats, 
-                            updateEvery=beamline.repeats, beamLine=beamline)
+                            updateEvery=beamline.repeats, beamLine=beamline,threads=3,processes=8)
                 state, reward, done = env.step(beamline)
-                print('state: ', state)
-                print('reward: ', reward)
+                #print('state: ', state)
+                #print('reward: ', reward)
                 rewards_history.append(reward)
                 episode_reward += reward
 
@@ -195,7 +199,7 @@ def train(beamline,env,model,num_actions):
                     break
 
 
-            print('\n Did one episode!')
+            print('\n Episode: ', episode_count)
 
             episode_reward = (max_steps_per_episode-timestep)*episode_reward
             # Update running reward to check condition for solving
@@ -258,8 +262,9 @@ def train(beamline,env,model,num_actions):
             break
 
         if episode_count % 500 == 0:
-            if input('end?, y-yes') == 'y':
-                break
+            #if input('end?, y-yes') == 'y':
+            print('Not solved yet...')
+            break
     
     model.save('actor_critic')
     
