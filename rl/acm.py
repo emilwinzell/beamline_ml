@@ -4,7 +4,7 @@
 #
 #from secrets import choice
 import sys
-#sys.stdout = open('acm_output.txt','wt')
+sys.stdout = open('acm_output.txt','wt')
 
 import xrt.backends.raycing.run as rr
 import xrt.plotter as xrtp
@@ -37,6 +37,7 @@ class RaycingEnv():
         self.params = [0.0,0.0,0.0,0.0,0.0] #pitch, yaw, roll, lat(x), vert(y)
         self.steps = [1e-5, 1e-4, 1e-4, 0.1 ,0.1]
         self.state = None
+        self.best_state = None
         self.num_steps = 0
 
     def __calculate_fwhm(self,data,lim,N):
@@ -69,11 +70,15 @@ class RaycingEnv():
         
         return amin
 
+    def __reward_func(self,r):
+        return 1/(1+np.exp(-0.3*r+4))
+
     def reset(self,beamline):
         #self.beamline = VeritasSimpleBeamline()
 
         self.params=[0.0,0.0,0.0,0.0,0.0]
         self.num_steps = 0
+        self.best_state = None
         self.step(beamline) # take 0 action step
         #print('reset.. state is:', self.state)
         return self.state
@@ -113,26 +118,46 @@ class RaycingEnv():
         gap = abs(xmin-ymin)
         FWHMx = min(f_x)
         FWHMy = min(f_y)
-        # print('gap: ', gap)
-        # print('fx: ', FWHMx)
-        # print('fy: ', FWHMy)
-        
+
+        if self.best_state is None:
+            self.best_state = [FWHMx,FWHMy,gap]
+
         f_x = []
         f_y = []
         self.num_steps += 1
         self.state =  [FWHMx,FWHMy,gap]
+
+        # Calculate reward
+        if np.sum(self.state) > np.sum(self.best_state):
+            # state did not improve
+            reward = -1
+        else:
+            # state did improve
+            imp = np.sum(self.best_state) - np.sum(self.state)
+            reward = self.__reward_func(imp)
+            self.best_state = [FWHMx,FWHMy,gap]
+            
+        
         # Done?
         done = False
-        reward = -1
         if gap < 1.5 and FWHMx < 0.02 and FWHMy < 0.02:
             done = True
             reward = 300 # max possible steps is 290
+        
         return self.state, reward, done
 
 
 def get_action(choice):
     acs = [0,0,1,1,2,2,3,3,4,4]
     return (acs[choice],-2*choice%2+1)
+
+# Disable
+def blockPrint():
+    sys.stdout = open(os.devnull, 'w')
+
+# Restore
+def enablePrint():
+    sys.stdout = sys.__stdout__
 
 
 def train(beamline,env,model,num_actions):
@@ -143,7 +168,7 @@ def train(beamline,env,model,num_actions):
     rewards_history = []
     running_reward = 0
     episode_count = 0
-    max_steps_per_episode = 100
+    max_steps_per_episode = 200
     gamma = 0.99 # Discount factor for past rewards
     eps = np.finfo(np.float32).eps.item()  # Smallest number such that 1.0 + eps != 1.0
     rr.run_process = beamline.run_process
@@ -187,8 +212,10 @@ def train(beamline,env,model,num_actions):
                 beamline.update_m4(env.params)
                 
                 #Return to ray tracing
+                blockPrint()
                 xrtr.run_ray_tracing(beamline.plots,repeats=beamline.repeats, 
                             updateEvery=beamline.repeats, beamLine=beamline,threads=3,processes=8)
+                enablePrint()
                 state, reward, done = env.step(beamline)
                 #print('state: ', state)
                 #print('reward: ', reward)
@@ -261,12 +288,12 @@ def train(beamline,env,model,num_actions):
             print("Solved at episode {}!".format(episode_count))
             break
 
-        if episode_count % 500 == 0:
+        if episode_count % 50 == 0:
             #if input('end?, y-yes') == 'y':
             print('Not solved yet...')
-            break
+            model.save('actor_critic')
     
-    model.save('actor_critic')
+    
     
 
 
