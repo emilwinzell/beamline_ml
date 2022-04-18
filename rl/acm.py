@@ -3,6 +3,7 @@
 # Actor critic, will maybe expand to DDPG 
 #
 #from secrets import choice
+import os
 import sys
 sys.stdout = open('acm_output.txt','wt')
 
@@ -71,7 +72,7 @@ class RaycingEnv():
         return amin
 
     def __reward_func(self,r):
-        return 1/(1+np.exp(-0.3*r+4))
+        return 1/(1+np.exp(-r+4))
 
     def reset(self,beamline):
         #self.beamline = VeritasSimpleBeamline()
@@ -140,7 +141,7 @@ class RaycingEnv():
         
         # Done?
         done = False
-        if gap < 1.5 and FWHMx < 0.02 and FWHMy < 0.02:
+        if gap > 1e-3 and gap < 1.5 and FWHMx < 0.02 and FWHMy < 0.02:
             done = True
             reward = 300 # max possible steps is 290
         
@@ -149,7 +150,7 @@ class RaycingEnv():
 
 def get_action(choice):
     acs = [0,0,1,1,2,2,3,3,4,4]
-    return (acs[choice],-2*choice%2+1)
+    return (acs[choice],2*(choice%2)-1)
 
 # Disable
 def blockPrint():
@@ -157,7 +158,7 @@ def blockPrint():
 
 # Restore
 def enablePrint():
-    sys.stdout = sys.__stdout__
+    sys.stdout = open('acm_output.txt','a')
 
 
 def train(beamline,env,model,num_actions):
@@ -218,7 +219,7 @@ def train(beamline,env,model,num_actions):
                 enablePrint()
                 state, reward, done = env.step(beamline)
                 #print('state: ', state)
-                #print('reward: ', reward)
+                print('reward: ', reward, end='\r')
                 rewards_history.append(reward)
                 episode_reward += reward
 
@@ -300,7 +301,7 @@ def train(beamline,env,model,num_actions):
 
 
 def main():
-    beamline = VeritasSimpleBeamline()
+    beamline = VeritasSimpleBeamline(nrays=10000)
     env = RaycingEnv()
 
     num_inputs = 3

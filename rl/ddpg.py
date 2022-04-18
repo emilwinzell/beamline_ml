@@ -5,7 +5,7 @@
 # April 2022
 import os
 import sys
-#sys.stdout = open('acm_output.txt','wt')
+sys.stdout = open('ddpg_output.txt','wt')
 
 import xrt.backends.raycing.run as rr
 import xrt.plotter as xrtp
@@ -115,8 +115,8 @@ class RaycingEnv():
         if gap == 0.0:
             gap = 1000.0
         gap = gap/1000.0 # normalize
-        if self.best_state is None:
-            self.best_state = [FWHMx,FWHMy,gap]
+        #if self.best_state is None:
+        #    self.best_state = [FWHMx,FWHMy,gap]
 
         f_x = []
         f_y = []
@@ -124,20 +124,20 @@ class RaycingEnv():
         self.state =  [FWHMx,FWHMy,gap]
 
         # Calculate reward
-        if np.sum(self.state) > np.sum(self.best_state):
-            # state did not improve
-            reward = -1
-        else:
-            # state did improve
-            imp = np.sum(self.best_state) - np.sum(self.state)
-            reward = self.__reward_func(imp)
-            self.best_state = [FWHMx,FWHMy,gap]
+        #if np.sum(self.state) > np.sum(self.best_state):
+        #    # state did not improve
+        #    reward = -1
+        #else:
+        #    # state did improve
+        #    imp = np.sum(self.best_state) - np.sum(self.state)
+        #    reward = self.__reward_func(imp)
+        #    self.best_state = [FWHMx,FWHMy,gap]
         reward = -np.sum(self.state)
             
         
         # Done?
         done = False
-        if gap < 1.5 and FWHMx < 0.02 and FWHMy < 0.02:
+        if gap < 1.5/1000.0 and FWHMx < 0.02 and FWHMy < 0.02:
             done = True
             reward = 300 # max possible steps is 290
         
@@ -172,6 +172,22 @@ class OUActionNoise:
             self.x_prev = self.x_initial
         else:
             self.x_prev = np.zeros_like(self.mean)
+
+
+class NoiseProcess:
+    def __init__(self, mean, std_deviation):
+        self.mean = mean
+        self.init_std = std_deviation
+        self.steps = 0
+
+    def __call__(self):
+        std = np.exp(-0.005*self.steps)*self.init_std
+        x = np.random.normal(self.mean, std,size=self.mean.shape)
+        self.steps += 1
+        return x
+
+    def reset(self):
+        self.steps = 0
 
 class Buffer:
     def __init__(self, num_states, num_actions, models, optimizers, buffer_capacity=100000, batch_size=64):
@@ -289,10 +305,10 @@ class Buffer:
         return np.squeeze(legal_action)
 
     def save_weights(self, model_dir):
-        self.actor_model.save_weights(os.path.join(model_dir,'am_weights.h5'))
-        self.critic_model.save_weights(os.path.join(model_dir,'cr_weights.h5'))
-        self.target_actor.save_weights(os.path.join(model_dir,'ta_weights.h5'))
-        self.target_critic.save_weights(os.path.join(model_dir,'tc_weights.h5'))
+        self.actor_model.save_weights(os.path.join(model_dir,'am_weights2.h5'))
+        self.critic_model.save_weights(os.path.join(model_dir,'cr_weights2.h5'))
+        self.target_actor.save_weights(os.path.join(model_dir,'ta_weights2.h5'))
+        self.target_critic.save_weights(os.path.join(model_dir,'tc_weights2.h5'))
         print('Weights saved at: ', model_dir)
 
 
@@ -340,12 +356,12 @@ def blockPrint():
 
 # Restore
 def enablePrint():
-    sys.stdout = sys.__stdout__
+    sys.stdout = open('ddpg_output.txt','a')#sys.__stdout__
 
 
 def train(beamline, env, model_dir, bounds, num_states, num_actions):
-    std_dev = np.array([1e-5, 1e-4, 1e-4, 0.1 ,0.1])
-    ou_noise = OUActionNoise(mean=np.zeros(5), std_deviation=std_dev)
+    std_dev = np.array([0.001, 0.0005, 0.0005, 1 ,0.5])
+    ou_noise = NoiseProcess(mean=np.zeros(5), std_deviation=std_dev)
 
     actor_model = get_actor(num_states,num_actions,bounds)
     critic_model = get_critic(num_states,num_actions)
@@ -354,8 +370,12 @@ def train(beamline, env, model_dir, bounds, num_states, num_actions):
     target_critic = get_critic(num_states,num_actions)
 
     # Making the weights equal initially
-    target_actor.set_weights(actor_model.get_weights())
-    target_critic.set_weights(critic_model.get_weights())
+    #target_actor.set_weights(actor_model.get_weights())
+    #target_critic.set_weights(critic_model.get_weights())
+    actor_model.load_weights(os.path.join(model_dir,'am_weights2.h5'))
+    critic_model.load_weights(os.path.join(model_dir,'cr_weights2.h5'))
+    target_actor.load_weights(os.path.join(model_dir,'ta_weights2.h5'))
+    target_critic.load_weights(os.path.join(model_dir,'tc_weights2.h5'))
 
     # Learning rate for actor-critic models
     critic_lr = 0.002
@@ -364,8 +384,8 @@ def train(beamline, env, model_dir, bounds, num_states, num_actions):
     optimizers = [tf.keras.optimizers.Adam(actor_lr), tf.keras.optimizers.Adam(critic_lr)]
     models = [actor_model, critic_model, target_actor, target_critic]
 
-    total_episodes = 100
-    max_steps_per_episode = 1000
+    total_episodes = 12
+    max_steps_per_episode = 700
     
     buffer = Buffer(num_states, num_actions, models, optimizers, buffer_capacity=50000, batch_size=64)
 
@@ -381,6 +401,7 @@ def train(beamline, env, model_dir, bounds, num_states, num_actions):
         xrtr.run_ray_tracing(beamline.plots,repeats=beamline.repeats, 
                             updateEvery=beamline.repeats, beamLine=beamline)
         prev_state = env.reset(beamline)
+        ou_noise.reset()
         episodic_reward = 0
         step_count = 0
         while True:
@@ -400,14 +421,19 @@ def train(beamline, env, model_dir, bounds, num_states, num_actions):
             #Return to ray tracing
             blockPrint()
             xrtr.run_ray_tracing(beamline.plots,repeats=beamline.repeats, 
-                        updateEvery=beamline.repeats, beamLine=beamline)#,threads=3,processes=8)
+                        updateEvery=beamline.repeats, beamLine=beamline,threads=3,processes=8)
             enablePrint()
             
             # Recieve state and reward from environment.
             state, reward, done = env.step(beamline)
             step_count += 1
-            print('new state: ', state)
-            print('reward: ', reward)
+            #print('new state: ', state)
+            print('reward: {0:.4f}, action: {1:.6f}, {2:.6f}, {3:.6f}, {4:.2f}, {5:.2f}'.format(reward,
+                                                                                                action[0],
+                                                                                                action[1],
+                                                                                                action[2],
+                                                                                                action[3],
+                                                                                                action[4]))
 
             buffer.record((prev_state, action, reward, state))
             episodic_reward += reward

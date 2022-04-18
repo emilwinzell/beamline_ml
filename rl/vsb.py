@@ -296,7 +296,7 @@ class VeritasSimpleBeamline(raycing.BeamLine):
         self.plots = self.__define_plots(self.bins,self.xz_lim)
 
         # initialize M4 randomly
-        self.p_lim=0.0005
+        self.p_lim=0.003
         self.r_lim=0.001
         self.y_lim=0.001
         self.l_lim=5.0
@@ -384,7 +384,7 @@ class VeritasSimpleBeamline(raycing.BeamLine):
         self.M4.center = [self.m4center[0] + limit(lateral, self.l_lim),
                             self.m4center[1], 
                             self.m4center[2] +limit(vertical, self.v_lim)]
-        print('Updated parameters')
+        #print('Updated parameters')
         return
 
     # def trace(self,generator,generatorArgs):
