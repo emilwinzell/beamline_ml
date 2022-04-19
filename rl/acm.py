@@ -5,7 +5,7 @@
 #from secrets import choice
 import os
 import sys
-sys.stdout = open('acm_output.txt','wt')
+#sys.stdout = open('acm_output.txt','wt')
 
 import xrt.backends.raycing.run as rr
 import xrt.plotter as xrtp
@@ -38,7 +38,7 @@ class RaycingEnv():
         self.params = [0.0,0.0,0.0,0.0,0.0] #pitch, yaw, roll, lat(x), vert(y)
         self.steps = [1e-5, 1e-4, 1e-4, 0.1 ,0.1]
         self.state = None
-        self.best_state = None
+        self.prev_state = None
         self.num_steps = 0
 
     def __calculate_fwhm(self,data,lim,N):
@@ -85,7 +85,7 @@ class RaycingEnv():
         return self.state
 
     def step(self,beamline):
-        # action = (parameter, (-1 or +1))
+        # action = ??
         # parameter: 0-pitch, 1-yaw, 2-roll, 3-lateral, 4-vertical
         
         #rr.run_process = self.beamline.run_process
@@ -99,12 +99,7 @@ class RaycingEnv():
             xBins = plot.xaxis.binEdges
             yt1D = np.append(plot.yaxis.total1D,0.0)
             yBins = plot.yaxis.binEdges
-            # t2D = plot.total2D_RGB
-            # if t2D.max() > 0:
-            #     t2D = t2D*65535.0/t2D.max()
-            # t2D = np.uint16(cv.flip(t2D,0))
-            # cv.imshow('plot', t2D)
-            # cv.waitKey(0)
+
             if plot.dx == 0: 
                 f_x.append(50.0)
             else:
@@ -119,33 +114,33 @@ class RaycingEnv():
         gap = abs(xmin-ymin)
         FWHMx = min(f_x)
         FWHMy = min(f_y)
-
-        if self.best_state is None:
-            self.best_state = [FWHMx,FWHMy,gap]
+        if gap == 0.0:
+            gap = 1000.0
+        gap = gap/1000.0 # normalize
+        
 
         f_x = []
         f_y = []
         self.num_steps += 1
         self.state =  [FWHMx,FWHMy,gap]
 
-        # Calculate reward
-        if np.sum(self.state) > np.sum(self.best_state):
-            # state did not improve
-            reward = -1
+        if not self.prev_state is None:
+            imp = np.sum(self.prev_state) - np.sum(self.state)
         else:
-            # state did improve
-            imp = np.sum(self.best_state) - np.sum(self.state)
-            reward = self.__reward_func(imp)
-            self.best_state = [FWHMx,FWHMy,gap]
+            imp = 0.0
+       
+        reward = -np.sum(self.state)
+        reward = max(-10,reward)
             
         
         # Done?
         done = False
-        if gap > 1e-3 and gap < 1.5 and FWHMx < 0.02 and FWHMy < 0.02:
+        if gap < 1.5/1000.0 and FWHMx < 0.02 and FWHMy < 0.02:
             done = True
             reward = 300 # max possible steps is 290
-        
-        return self.state, reward, done
+        if imp >= 0:
+            self.prev_state = self.state
+        return self.state, reward,imp, done
 
 
 def get_action(choice):
@@ -158,7 +153,7 @@ def blockPrint():
 
 # Restore
 def enablePrint():
-    sys.stdout = open('acm_output.txt','a')
+    sys.stdout = sys.__stdout__#open('acm_output.txt','a')
 
 
 def train(beamline,env,model,num_actions):
@@ -169,7 +164,9 @@ def train(beamline,env,model,num_actions):
     rewards_history = []
     running_reward = 0
     episode_count = 0
-    max_steps_per_episode = 200
+
+    total_episodes = 15
+    max_steps_per_episode = 700
     gamma = 0.99 # Discount factor for past rewards
     eps = np.finfo(np.float32).eps.item()  # Smallest number such that 1.0 + eps != 1.0
     rr.run_process = beamline.run_process
@@ -182,9 +179,10 @@ def train(beamline,env,model,num_actions):
         # print(beamline.M4.center)
         # print('---------------')
         xrtr.run_ray_tracing(beamline.plots,repeats=beamline.repeats, 
-                            updateEvery=beamline.repeats, beamLine=beamline,threads=3,processes=8)
+                            updateEvery=beamline.repeats, beamLine=beamline)#,threads=3,processes=8)
         state = env.reset(beamline)
         episode_reward = 0
+        no_imp_cnt = 0
         with tf.GradientTape() as tape:
             for timestep in range(1, max_steps_per_episode):
                 # env.render(); Adding this line would show the attempts
@@ -215,11 +213,19 @@ def train(beamline,env,model,num_actions):
                 #Return to ray tracing
                 blockPrint()
                 xrtr.run_ray_tracing(beamline.plots,repeats=beamline.repeats, 
-                            updateEvery=beamline.repeats, beamLine=beamline,threads=3,processes=8)
+                            updateEvery=beamline.repeats, beamLine=beamline)#,threads=3,processes=8)
                 enablePrint()
-                state, reward, done = env.step(beamline)
+                state, reward,imp, done = env.step(beamline)
+
+                if imp < 0.0 and no_imp_cnt < 15:
+                    #no improvement
+                    env.params[action[0]] -= action[1]*env.steps[action[0]] #revert action
+                    no_imp_cnt += 1
+                else:
+                    no_imp_cnt = 0
+
                 #print('state: ', state)
-                print('reward: ', reward, end='\r')
+                print('reward: ', reward, 'params: ', env.params, no_imp_cnt)
                 rewards_history.append(reward)
                 episode_reward += reward
 
@@ -281,18 +287,17 @@ def train(beamline,env,model,num_actions):
 
         # Log details
         episode_count += 1
-        if episode_count % 10 == 0:
+        if episode_count % 2 == 0:
             template = "running reward: {:.2f} at episode {}"
             print(template.format(running_reward, episode_count))
 
-        if running_reward > max_steps_per_episode:  # Condition to consider the task solved
-            print("Solved at episode {}!".format(episode_count))
-            break
+        #if running_reward > max_steps_per_episode:  # Condition to consider the task solved
+        #    print("Solved at episode {}!".format(episode_count))
+        #    break
 
-        if episode_count % 50 == 0:
+        if episode_count == total_episodes:
             #if input('end?, y-yes') == 'y':
-            print('Not solved yet...')
-            model.save('actor_critic')
+            return model
     
     
     
@@ -316,8 +321,22 @@ def main():
     model = keras.Model(inputs=inputs, outputs=[action, critic])
     model.summary()
 
-    train(beamline, env,model,num_actions)
-    
+    n=1
+    model_dir = 'acm_models_{}'.format(n)
+    created_dir = False
+    while not created_dir:
+            try:
+                os.mkdir(model_dir)
+                created_dir = True
+            except OSError:
+                created_dir = False
+                n += 1
+                model_dir = 'acm_models_{}'.format(n)
+
+
+    model = train(beamline, env,model,num_actions)
+    model.save_weights(os.path.join(model_dir,'ac_weights.h5'))
+
     print('DONE :)')
 
     
