@@ -5,7 +5,7 @@
 #from secrets import choice
 import os
 import sys
-#sys.stdout = open('acm_output.txt','wt')
+sys.stdout = open('acm_output.txt','wt')
 
 import xrt.backends.raycing.run as rr
 import xrt.plotter as xrtp
@@ -153,7 +153,7 @@ def blockPrint():
 
 # Restore
 def enablePrint():
-    sys.stdout = sys.__stdout__#open('acm_output.txt','a')
+    sys.stdout = open('acm_output.txt','a')#sys.__stdout__#
 
 
 def train(beamline,env,model,num_actions):
@@ -179,7 +179,7 @@ def train(beamline,env,model,num_actions):
         # print(beamline.M4.center)
         # print('---------------')
         xrtr.run_ray_tracing(beamline.plots,repeats=beamline.repeats, 
-                            updateEvery=beamline.repeats, beamLine=beamline)#,threads=3,processes=8)
+                            updateEvery=beamline.repeats, beamLine=beamline,threads=3,processes=8)
         state = env.reset(beamline)
         episode_reward = 0
         no_imp_cnt = 0
@@ -213,19 +213,19 @@ def train(beamline,env,model,num_actions):
                 #Return to ray tracing
                 blockPrint()
                 xrtr.run_ray_tracing(beamline.plots,repeats=beamline.repeats, 
-                            updateEvery=beamline.repeats, beamLine=beamline)#,threads=3,processes=8)
+                            updateEvery=beamline.repeats, beamLine=beamline,threads=3,processes=8)
                 enablePrint()
                 state, reward,imp, done = env.step(beamline)
 
-                if imp < 0.0 and no_imp_cnt < 15:
-                    #no improvement
-                    env.params[action[0]] -= action[1]*env.steps[action[0]] #revert action
-                    no_imp_cnt += 1
-                else:
-                    no_imp_cnt = 0
+                #if imp < 0.0 and no_imp_cnt < 15:
+                #    #no improvement
+                #    env.params[action[0]] -= action[1]*env.steps[action[0]] #revert action
+                #    no_imp_cnt += 1
+                #else:
+                #    no_imp_cnt = 0
 
                 #print('state: ', state)
-                print('reward: ', reward, 'params: ', env.params, no_imp_cnt)
+                print('reward: ', reward, 'params: ', env.params)
                 rewards_history.append(reward)
                 episode_reward += reward
 

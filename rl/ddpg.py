@@ -17,6 +17,7 @@ import cv2 as cv
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
+from keras.regularizers import l2
 #import gym
 import scipy.signal
 import time
@@ -133,6 +134,7 @@ class RaycingEnv():
         #    reward = self.__reward_func(imp)
         #    self.best_state = [FWHMx,FWHMy,gap]
         reward = -np.sum(self.state)
+        reward = max(-10,reward)
             
         
         # Done?
@@ -305,10 +307,10 @@ class Buffer:
         return np.squeeze(legal_action)
 
     def save_weights(self, model_dir):
-        self.actor_model.save_weights(os.path.join(model_dir,'am_weights2.h5'))
-        self.critic_model.save_weights(os.path.join(model_dir,'cr_weights2.h5'))
-        self.target_actor.save_weights(os.path.join(model_dir,'ta_weights2.h5'))
-        self.target_critic.save_weights(os.path.join(model_dir,'tc_weights2.h5'))
+        self.actor_model.save_weights(os.path.join(model_dir,'am_weights.h5'))
+        self.critic_model.save_weights(os.path.join(model_dir,'cr_weights.h5'))
+        self.target_actor.save_weights(os.path.join(model_dir,'ta_weights.h5'))
+        self.target_critic.save_weights(os.path.join(model_dir,'tc_weights.h5'))
         print('Weights saved at: ', model_dir)
 
 
@@ -319,7 +321,7 @@ def get_actor(num_states, num_actions, bounds):
     inputs = layers.Input(shape=(num_states,))
     out = layers.Dense(256, activation="relu")(inputs)
     out = layers.Dense(256, activation="relu")(out)
-    outputs = layers.Dense(num_actions, activation="tanh", kernel_initializer=last_init)(out)
+    outputs = layers.Dense(num_actions, activation="tanh",  kernel_regularizer=l2(0.01), kernel_initializer=last_init)(out)
 
     # Our upper bound is 2.0 for Pendulum.
     outputs = outputs * bounds
@@ -361,7 +363,7 @@ def enablePrint():
 
 def train(beamline, env, model_dir, bounds, num_states, num_actions):
     std_dev = np.array([0.001, 0.0005, 0.0005, 1 ,0.5])
-    ou_noise = NoiseProcess(mean=np.zeros(5), std_deviation=std_dev)
+    ou_noise = OUActionNoise(mean=np.zeros(5), std_deviation=std_dev)
 
     actor_model = get_actor(num_states,num_actions,bounds)
     critic_model = get_critic(num_states,num_actions)
@@ -370,24 +372,24 @@ def train(beamline, env, model_dir, bounds, num_states, num_actions):
     target_critic = get_critic(num_states,num_actions)
 
     # Making the weights equal initially
-    #target_actor.set_weights(actor_model.get_weights())
-    #target_critic.set_weights(critic_model.get_weights())
-    actor_model.load_weights(os.path.join(model_dir,'am_weights2.h5'))
-    critic_model.load_weights(os.path.join(model_dir,'cr_weights2.h5'))
-    target_actor.load_weights(os.path.join(model_dir,'ta_weights2.h5'))
-    target_critic.load_weights(os.path.join(model_dir,'tc_weights2.h5'))
+    target_actor.set_weights(actor_model.get_weights())
+    target_critic.set_weights(critic_model.get_weights())
+    #actor_model.load_weights(os.path.join(model_dir,'am_weights2.h5'))
+    #critic_model.load_weights(os.path.join(model_dir,'cr_weights2.h5'))
+    #target_actor.load_weights(os.path.join(model_dir,'ta_weights2.h5'))
+    #target_critic.load_weights(os.path.join(model_dir,'tc_weights2.h5'))
 
     # Learning rate for actor-critic models
     critic_lr = 0.002
     actor_lr = 0.001
 
-    optimizers = [tf.keras.optimizers.Adam(actor_lr), tf.keras.optimizers.Adam(critic_lr)]
+    optimizers = [tf.keras.optimizers.Adam(actor_lr,clipnorm=5), tf.keras.optimizers.Adam(critic_lr, clipnorm=5)]
     models = [actor_model, critic_model, target_actor, target_critic]
 
-    total_episodes = 12
+    total_episodes = 20
     max_steps_per_episode = 700
     
-    buffer = Buffer(num_states, num_actions, models, optimizers, buffer_capacity=50000, batch_size=64)
+    buffer = Buffer(num_states, num_actions, models, optimizers, buffer_capacity=100000, batch_size=64)
 
     # To store reward history of each episode
     ep_reward_list = []
@@ -470,7 +472,7 @@ def train(beamline, env, model_dir, bounds, num_states, num_actions):
 def main():
     n=1
     model_dir = 'ddpg_models_{}'.format(n)
-    created_dir = True
+    created_dir = False
     while not created_dir:
             try:
                 os.mkdir(model_dir)
