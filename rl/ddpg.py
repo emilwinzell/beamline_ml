@@ -155,7 +155,7 @@ class RaycingEnv():
                 plot.xaxis.limits = None
                 plot.yaxis.limits = None
 
-        # change bealine params
+        # change beamline params
         action = np.clip(sampled_actions, -self.bounds, self.bounds)
         self.beamline.update_m4(action)
 
@@ -175,7 +175,6 @@ class RaycingEnv():
         return self.state
 
     def step(self, action):
-        print('a: ', action)
         self.__take_action(action)
 
         self.state, reward, done, self.f_x, self.f_y = self.__get_observation()
@@ -406,14 +405,14 @@ def enablePrint():
     sys.stdout = open('ddpg_output.txt','a')#sys.__stdout__
 
 
-def train(beamline, env, model_dir, bounds, num_states, num_actions):
+def train(beamline, env, model_dir, num_states, num_actions):
     std_dev = np.array([0.001, 0.0005, 0.0005, 1 ,0.5])
     ou_noise = OUActionNoise(mean=np.zeros(5), std_deviation=std_dev)
 
-    actor_model = get_actor(num_states,num_actions,bounds)
+    actor_model = get_actor(num_states,num_actions,env.bounds)
     critic_model = get_critic(num_states,num_actions)
 
-    target_actor = get_actor(num_states,num_actions,bounds)
+    target_actor = get_actor(num_states,num_actions,env.bounds)
     target_critic = get_critic(num_states,num_actions)
 
     # Making the weights equal initially
@@ -441,12 +440,10 @@ def train(beamline, env, model_dir, bounds, num_states, num_actions):
     # To store average reward history of last few episodes
     avg_reward_list = []
 
-    rr.run_process = beamline.run_process
 
     # Takes about 4 min to train
     for ep in range(total_episodes):
-        xrtr.run_ray_tracing(beamline.plots,repeats=beamline.repeats, 
-                            updateEvery=beamline.repeats, beamLine=beamline)
+
         prev_state = env.reset(beamline)
         ou_noise.reset()
         episodic_reward = 0
@@ -455,24 +452,15 @@ def train(beamline, env, model_dir, bounds, num_states, num_actions):
 
             tf_prev_state = tf.expand_dims(tf.convert_to_tensor(prev_state), 0)
 
-            action = buffer.policy(tf_prev_state, ou_noise, bounds)
+            action = buffer.policy(tf_prev_state, ou_noise, env.bounds)
 
             for plot in beamline.plots:
                 plot.xaxis.limits = None
                 plot.yaxis.limits = None
 
-            #print('action: ', action)
-            # Apply the sampled action in our environment
-            beamline.update_m4(action)
-            
-            #Return to ray tracing
-            blockPrint()
-            xrtr.run_ray_tracing(beamline.plots,repeats=beamline.repeats, 
-                        updateEvery=beamline.repeats, beamLine=beamline,threads=3,processes=8)
-            enablePrint()
             
             # Recieve state and reward from environment.
-            state, reward, done = env.step(beamline)
+            state, reward, done,_ = env.step(action)
             step_count += 1
             #print('new state: ', state)
             print('reward: {0:.4f}, action: {1:.6f}, {2:.6f}, {3:.6f}, {4:.2f}, {5:.2f}'.format(reward,
@@ -500,7 +488,7 @@ def train(beamline, env, model_dir, bounds, num_states, num_actions):
 
         # Mean of last 40 episodes
         avg_reward = np.mean(ep_reward_list[-40:])
-        print("Episode * {} * Avg Reward is ==> {}".format(ep, avg_reward))
+        print("Episode * {} * Reward: {}, Avg Reward is ==> {}".format(ep, episodic_reward, avg_reward))
         avg_reward_list.append(avg_reward)
 
     #am = os.path.join(models,'actor_model')
@@ -530,8 +518,8 @@ def main():
 
     beamline = VeritasSimpleBeamline()
     env = RaycingEnv()
-    bounds = np.array([beamline.p_lim, beamline.y_lim, beamline.r_lim, beamline.l_lim, beamline.v_lim])
-    train(beamline, env, model_dir, bounds, num_states=3, num_actions=5)
+
+    train(beamline, env, model_dir, num_states=3, num_actions=5)
     
     print('DONE :)')
 
