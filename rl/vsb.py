@@ -305,12 +305,15 @@ class VeritasSimpleBeamline(raycing.BeamLine):
         self.M4yaw=np.random.uniform(-self.y_lim,self.y_lim) #in radians, directly adds yaw to M4
         self.M4roll=np.random.uniform(-self.r_lim,self.r_lim)
         self.M4pitch=np.random.uniform(-self.p_lim,self.p_lim)
-        self.m4center[0] += np.random.uniform(-self.l_lim,self.l_lim)
-        self.m4center[2] += np.random.uniform(-self.v_lim,self.v_lim)
+        self.lateral = np.random.uniform(-self.l_lim,self.l_lim)
+        self.vertical = np.random.uniform(-self.v_lim,self.v_lim)
+
         self.M4.extraPitch = self.M4pitch
         self.M4.extraRoll = self.M4roll
         self.M4.extraYaw = self.M4yaw
-        self.M4.center = self.m4center
+        self.M4.center = [self.m4center[0] + self.lateral,
+                            self.m4center[1], 
+                            self.m4center[2] + self.vertical]
 
 
 
@@ -376,22 +379,31 @@ class VeritasSimpleBeamline(raycing.BeamLine):
     
     def update_m4(self,params):
         [pitch,yaw,roll,lateral,vertical] = params
-        limit = lambda n, lim: max(min(lim, n), -lim)
+        #limit = lambda n, lim: max(min(lim, n), -lim)
 
-        self.M4.extraPitch = limit(self.M4pitch+pitch, self.p_lim)
-        self.M4.extraYaw = limit(self.M4yaw+yaw, self.y_lim)  
-        self.M4.extraRoll = limit(self.M4roll+roll, self.r_lim)
-        self.M4.center = [self.m4center[0] + limit(lateral, self.l_lim),
+        self.M4.extraPitch = self.M4pitch+pitch #limit(self.M4pitch+pitch, self.p_lim)
+        self.M4.extraYaw = self.M4yaw+yaw #limit(self.M4yaw+yaw, self.y_lim)  
+        self.M4.extraRoll = self.M4roll+roll #limit(self.M4roll+roll, self.r_lim)
+        self.M4.center = [self.m4center[0] + self.lateral + lateral,
                             self.m4center[1], 
-                            self.m4center[2] +limit(vertical, self.v_lim)]
+                            self.m4center[2] + self.vertical + vertical]
         #print('Updated parameters')
         return
+ 
+    def reset(self):
+        self.M4yaw=np.random.uniform(-self.y_lim,self.y_lim) #in radians, directly adds yaw to M4
+        self.M4roll=np.random.uniform(-self.r_lim,self.r_lim)
+        self.M4pitch=np.random.uniform(-self.p_lim,self.p_lim)
+        self.lateral= np.random.uniform(-self.l_lim,self.l_lim)
+        self.vertical = np.random.uniform(-self.v_lim,self.v_lim)
+        
+        self.M4.extraPitch = self.M4pitch
+        self.M4.extraRoll = self.M4roll
+        self.M4.extraYaw = self.M4yaw
+        self.M4.center = [self.m4center[0] + self.lateral,
+                            self.m4center[1], 
+                            self.m4center[2] + self.vertical]
 
-    # def trace(self,generator,generatorArgs):
-    #     rr.run_process = self.run_process
-    #     xrtr.run_ray_tracing( self.plots,repeats=self.repeats, 
-    #                             updateEvery=self.repeats, beamLine=self,
-    #                             generator=generator, generatorArgs=generatorArgs)
 
 
 

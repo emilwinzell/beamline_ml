@@ -29,17 +29,56 @@ from vsb import VeritasSimpleBeamline
 # Environment class
 #
 class RaycingEnv():
-    # Raycing env
-    # state: (min fwhm and fwhm gap) 3 params
-    # actions: 2*5=10
+    """
+    ### RaycingEnv
+
+    ### Action Space
+    The action is a `ndarray` with shape `(5,)` representing the ways to shift the M4 mirror
+    | Num | Action   | Min    | Max   |
+    |-----|----------|--------|-------|
+    | 0   | Pitch    | -0.003 | 0.003 |
+    | 1   | Yaw      | -0.001 | 0.001 |
+    | 2   | Roll     | -0.001 | 0.001 |
+    | 3   | Lateral  | -5.0   | 5.0   |
+    | 4   | Vertical | -2.5   | 2.5   |
+
+    ### Observation Space
+    The observation is a `ndarray` with shape `(3,)` representing the minumum full-width-half-maximas of the histograms of the x and y axis. And the gap
+    between the location of the minimas along the z axis.
+
+    | Num | Observation      | Min   | Max  |
+    |-----|------------------|-------|------|
+    | 0   | FWHMx            | 0.0   | 50.0 |
+    | 1   | FWHMy            | 0.0   | 50.0 |
+    | 2   | Gap              | -10.0 | 10.0 |
+
+    ### Rewards
+    The reward function is defined as:
+
+    if done:
+        r = 300
+    else:
+        r = -  FWHMx -  FWHMy - abs(Gap)
+
+
+    """
+    
     def __init__(self):
-        super().__init__()
+        super(RaycingEnv, self).__init__()
+        self.beamline = VeritasSimpleBeamline() # vsb object
+        rr.run_process = self.beamline.run_process
 
-        #self.beamline = beamline#VeritasSimpleBeamline()
-
-        self.state = None
-        self.best_state = None
+        self.bounds = np.array([self.beamline.p_lim, self.beamline.y_lim, self.beamline.r_lim, self.beamline.l_lim, self.beamline.v_lim])
+        
+        #self.action_space = spaces.Box(-self.bounds, self.bounds, dtype=np.float32)
+        #self.observation_space = spaces.Box(np.array([0.0, 0.0, -10.0]),
+        #                                    np.array([50.0, 50.0, 10.0]), dtype=np.float32)
+        
         self.num_steps = 0
+        self.state = None
+        self.f_x = []
+        self.f_y = []
+
 
     def __calculate_fwhm(self,data,lim,N):
         x = np.linspace(lim[0], lim[-1], N)
@@ -71,29 +110,10 @@ class RaycingEnv():
         
         return amin
 
-    def __reward_func(self,r):
-        return 1/(1+np.exp(-r+4))
-
-    def reset(self,beamline):
-        #self.beamline = VeritasSimpleBeamline()
-
-        self.num_steps = 0
-        self.best_state = None
-        self.step(beamline) # take 0 action step
-        #print('reset.. state is:', self.state)
-        return self.state
-
-    def step(self,beamline):
-        # action = ??
-        # parameter: 0-pitch, 1-yaw, 2-roll, 3-lateral, 4-vertical
-        
-        #rr.run_process = self.beamline.run_process
-        #xrtr.run_ray_tracing(self.beamline.plots,repeats=self.beamline.repeats, 
-        #                         updateEvery=self.beamline.repeats, beamLine=self.beamline)
-        
+    def __get_observation(self):
         f_x = []
         f_y = []
-        for plot in beamline.plots:
+        for plot in self.beamline.plots:
             xt1D = np.append(plot.xaxis.total1D,0.0)
             xBins = plot.xaxis.binEdges
             yt1D = np.append(plot.yaxis.total1D,0.0)
@@ -108,42 +128,67 @@ class RaycingEnv():
             else:
                 f_y.append(self.__calculate_fwhm(yt1D,yBins,1000))
             
-        xmin = self.__calculate_argmin(f_x, beamline.scrTgt11.dqs, 1000)
-        ymin = self.__calculate_argmin(f_y, beamline.scrTgt11.dqs, 1000)
-        gap = abs(xmin-ymin)
+        xmin = self.__calculate_argmin(f_x, self.beamline.scrTgt11.dqs, 1000)
+        ymin = self.__calculate_argmin(f_y, self.beamline.scrTgt11.dqs, 1000)
+        gap = xmin-ymin
         FWHMx = min(f_x)
         FWHMy = min(f_y)
         if gap == 0.0:
             gap = 1000.0
-        gap = gap/1000.0 # normalize
-        #if self.best_state is None:
-        #    self.best_state = [FWHMx,FWHMy,gap]
-
-        f_x = []
-        f_y = []
-        self.num_steps += 1
-        self.state =  [FWHMx,FWHMy,gap]
-
-        # Calculate reward
-        #if np.sum(self.state) > np.sum(self.best_state):
-        #    # state did not improve
-        #    reward = -1
-        #else:
-        #    # state did improve
-        #    imp = np.sum(self.best_state) - np.sum(self.state)
-        #    reward = self.__reward_func(imp)
-        #    self.best_state = [FWHMx,FWHMy,gap]
-        reward = -np.sum(self.state)
-        reward = max(-10,reward)
-            
+        gap = np.clip(gap/1000.0,-10.0,10.0) # normalize
         
+        state =  np.array([FWHMx,FWHMy,gap])
+
+        reward = -FWHMx - FWHMy - abs(gap)
+
         # Done?
         done = False
         if gap < 1.5/1000.0 and FWHMx < 0.02 and FWHMy < 0.02:
             done = True
             reward = 300 # max possible steps is 290
         
-        return self.state, reward, done
+        return state, reward, done, f_x, f_y
+
+
+    def __take_action(self, sampled_actions):
+        for plot in self.beamline.plots:
+                plot.xaxis.limits = None
+                plot.yaxis.limits = None
+
+        # change bealine params
+        action = np.clip(sampled_actions, -self.bounds, self.bounds)
+        self.beamline.update_m4(action)
+
+        print('taking action..')
+        sys.stdout = open(os.devnull, 'w')
+        xrtr.run_ray_tracing(self.beamline.plots,repeats=self.beamline.repeats, 
+                    updateEvery=self.beamline.repeats, beamLine=self.beamline)#,threads=3,processes=8)
+        sys.stdout = sys.__stdout__
+
+    def reset(self):
+        #self.beamline = VeritasSimpleBeamline()
+        self.beamline.reset()
+        self.__take_action(np.zeros(5,dtype=np.float32))
+        
+        self.num_steps = 0
+        self.state,_,_,_,_ = self.__get_observation()  # calculate state
+        return self.state
+
+    def step(self, action):
+        print('a: ', action)
+        self.__take_action(action)
+
+        self.state, reward, done, self.f_x, self.f_y = self.__get_observation()
+        
+        self.num_steps += 1
+
+        return self.state, reward, done, {}
+
+    def render(self):
+        print('fwhm x: ', self.f_x)
+        print('fwhm y: ', self.f_y)
+        print('state: ', self.state)
+
 
 # To implement better exploration by the Actor network, we use noisy perturbations, 
 # specifically an Ornstein-Uhlenbeck process for generating noise, as described in 
