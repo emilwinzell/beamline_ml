@@ -138,7 +138,7 @@ class EllipticalMirrorParamSE(roes.EllipticalMirrorParam):
 
 # Element class
 class VeritasSimpleBeamline(raycing.BeamLine):
-    def __init__(self,nrays=6000, azimuth=0., height=0., alignE='auto'):
+    def __init__(self,nrays=6000, azimuth=0., height=0., alignE='auto', m4_params=None):
         super().__init__(azimuth, height, alignE)
 
         ### constants
@@ -290,8 +290,8 @@ class VeritasSimpleBeamline(raycing.BeamLine):
         self.tgtCenter = self.M4.center[1]+(self.distM4TgtAPXPS+displF)*np.cos(2*(self.M1.pitch + tmppitchM3+ tmppitchM4))
         print('VERITAS beamline initialized')
 
-        self.bins = 512
-        self.xz_lim = 1
+        self.bins = 256
+        self.xz_lim = None
         self.repeats = 10
         self.plots = self.__define_plots(self.bins,self.xz_lim)
 
@@ -299,18 +299,25 @@ class VeritasSimpleBeamline(raycing.BeamLine):
         self.p_lim=0.003
         self.r_lim=0.001
         self.y_lim=0.001
-        self.l_lim=5.0
+        self.l_lim=1.0
         self.v_lim=2.5
 
-        self.M4yaw=np.random.uniform(-self.y_lim,self.y_lim) #in radians, directly adds yaw to M4
-        self.M4roll=np.random.uniform(-self.r_lim,self.r_lim)
-        self.M4pitch=np.random.uniform(-self.p_lim,self.p_lim)
-        self.lateral = np.random.uniform(-self.l_lim,self.l_lim)
-        self.vertical = np.random.uniform(-self.v_lim,self.v_lim)
+        if m4_params is None:
+            self.M4pitch=np.random.uniform(-self.p_lim,self.p_lim)
+            self.M4yaw=np.random.uniform(-self.y_lim,self.y_lim) #in radians, directly adds yaw to M4
+            self.M4roll=np.random.uniform(-self.r_lim,self.r_lim)
+            self.lateral = np.random.uniform(-self.l_lim,self.l_lim)
+            self.vertical = np.random.uniform(-self.v_lim,self.v_lim)
+        else:
+            self.M4pitch = m4_params[0]
+            self.M4yaw = m4_params[1]   
+            self.M4roll = m4_params[2]
+            self.lateral =  m4_params[3]
+            self.vertical = m4_params[4]
 
         self.M4.extraPitch = self.M4pitch
-        self.M4.extraRoll = self.M4roll
         self.M4.extraYaw = self.M4yaw
+        self.M4.extraRoll = self.M4roll
         self.M4.center = [self.m4center[0] + self.lateral,
                             self.m4center[1], 
                             self.m4center[2] + self.vertical]

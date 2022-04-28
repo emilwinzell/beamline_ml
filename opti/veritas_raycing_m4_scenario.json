@@ -1,0 +1,47 @@
+{
+    "application_name": "raycing",
+    "optimization_objectives": [
+        "value"
+    ],
+    "optimization_iterations": 100,
+    "models": {
+        "model": "gaussian_process"
+    },
+    "input_parameters": {
+        "pitch": {
+            "parameter_type": "real",
+            "values": [
+                -0.003,
+                0.003
+            ]
+        },
+        "yaw": {
+            "parameter_type": "real",
+            "values": [
+                -0.001,
+                0.001
+            ]
+        },
+        "roll": {
+            "parameter_type": "real",
+            "values": [
+                -0.001,
+                0.001
+            ]
+        },
+        "lateral": {
+            "parameter_type": "real",
+            "values": [
+                -1.5,
+                1.5
+            ]
+        },
+        "vertical": {
+            "parameter_type": "real",
+            "values": [
+                -2.5,
+                2.5
+            ]
+        }
+    }
+}
