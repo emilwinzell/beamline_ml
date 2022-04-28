@@ -103,7 +103,7 @@ class RaycingEnv():
     
         [a0,a1,a2],_ = optimize.curve_fit(poly, xlim, data)
 
-        if a2 < 0:
+        if a2 > 0:
             amin = -a1/(2*a2)
         else:
             amin = 1000.0
@@ -135,7 +135,7 @@ class RaycingEnv():
         FWHMy = min(f_y)
         if gap == 0.0:
             gap = 1000.0
-        gap = np.clip(gap/1000.0,-10.0,10.0) # normalize
+        gap = np.clip(gap/1000.0,-1.0,1.0) # normalize
         
         state =  np.array([FWHMx,FWHMy,gap])
 
@@ -143,7 +143,7 @@ class RaycingEnv():
 
         # Done?
         done = False
-        if gap < 1.5/1000.0 and FWHMx < 0.02 and FWHMy < 0.02:
+        if abs(gap) < 1.5/1000.0 and FWHMx < 0.01 and FWHMy < 0.005:
             done = True
             reward = 300 # max possible steps is 290
         
@@ -154,34 +154,40 @@ class RaycingEnv():
         for plot in self.beamline.plots:
                 plot.xaxis.limits = None
                 plot.yaxis.limits = None
+                plot.xaxis.binEdges = np.zeros(self.beamline.bins + 1)
+                plot.xaxis.total1D = np.zeros(self.beamline.bins)
+                plot.yaxis.binEdges = np.zeros(self.beamline.bins + 1)
+                plot.yaxis.total1D = np.zeros(self.beamline.bins)
 
         # change beamline params
         action = np.clip(sampled_actions, -self.bounds, self.bounds)
         self.beamline.update_m4(action)
 
-        print('taking action..')
-        sys.stdout = open(os.devnull, 'w')
+        
         xrtr.run_ray_tracing(self.beamline.plots,repeats=self.beamline.repeats, 
-                    updateEvery=self.beamline.repeats, beamLine=self.beamline)#,threads=3,processes=8)
-        sys.stdout = sys.__stdout__
+                    updateEvery=self.beamline.repeats, beamLine=self.beamline,threads=3,processes=8)
+        
 
     def reset(self):
         #self.beamline = VeritasSimpleBeamline()
         self.beamline.reset()
+        print('Set params: ', self.beamline.M4pitch, self.beamline.M4yaw, self.beamline.M4roll, self.beamline.lateral, self.beamline.vertical)
         self.__take_action(np.zeros(5,dtype=np.float32))
         
         self.num_steps = 0
-        self.state,_,_,_,_ = self.__get_observation()  # calculate state
-        return self.state
+        self.state,_,_,self.f_x,self.f_y = self.__get_observation()  # calculate state
+        return np.array(self.f_x + self.f_y)
 
     def step(self, action):
+        sys.stdout = open(os.devnull, 'w')
         self.__take_action(action)
+        sys.stdout = open('ddpg_output.txt','a')#sys.__stdout__
 
         self.state, reward, done, self.f_x, self.f_y = self.__get_observation()
         
         self.num_steps += 1
 
-        return self.state, reward, done, {}
+        return np.array(self.f_x + self.f_y), reward, done, {}
 
     def render(self):
         print('fwhm x: ', self.f_x)
@@ -405,7 +411,7 @@ def enablePrint():
     sys.stdout = open('ddpg_output.txt','a')#sys.__stdout__
 
 
-def train(beamline, env, model_dir, num_states, num_actions):
+def train(env, model_dir, num_states, num_actions):
     std_dev = np.array([0.001, 0.0005, 0.0005, 1 ,0.5])
     ou_noise = OUActionNoise(mean=np.zeros(5), std_deviation=std_dev)
 
@@ -431,7 +437,7 @@ def train(beamline, env, model_dir, num_states, num_actions):
     models = [actor_model, critic_model, target_actor, target_critic]
 
     total_episodes = 20
-    max_steps_per_episode = 700
+    max_steps_per_episode = 1000
     
     buffer = Buffer(num_states, num_actions, models, optimizers, buffer_capacity=100000, batch_size=64)
 
@@ -444,7 +450,7 @@ def train(beamline, env, model_dir, num_states, num_actions):
     # Takes about 4 min to train
     for ep in range(total_episodes):
 
-        prev_state = env.reset(beamline)
+        prev_state = env.reset()
         ou_noise.reset()
         episodic_reward = 0
         step_count = 0
@@ -454,11 +460,6 @@ def train(beamline, env, model_dir, num_states, num_actions):
 
             action = buffer.policy(tf_prev_state, ou_noise, env.bounds)
 
-            for plot in beamline.plots:
-                plot.xaxis.limits = None
-                plot.yaxis.limits = None
-
-            
             # Recieve state and reward from environment.
             state, reward, done,_ = env.step(action)
             step_count += 1
@@ -516,10 +517,9 @@ def main():
                 model_dir = 'ddpg_models_{}'.format(n)
 
 
-    beamline = VeritasSimpleBeamline()
     env = RaycingEnv()
 
-    train(beamline, env, model_dir, num_states=3, num_actions=5)
+    train(env, model_dir, num_states=18, num_actions=5)
     
     print('DONE :)')
 

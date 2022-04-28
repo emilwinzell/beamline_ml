@@ -6,7 +6,7 @@
 # Still nothing in the decoded images
 #
 import sys
-#sys.stdout = open('output.txt','wt')
+sys.stdout = open('output.txt','wt')
 import os
 import cv2 as cv
 import numpy as np
@@ -48,12 +48,12 @@ class My_Generator(Sequence):
         batch_y = self.y[idx * self.batch_size:(idx + 1) * self.batch_size]
 
         targets = []
-        for img in batch_x:
-            #img = self.__normalize__(cv.imread(img_name,0))
+        for img_name in batch_x:
+            img = self.__normalize__(cv.imread(img_name,0))
             #img = cv.blur(img,(5,5))
             img = cv.resize(img,(256,256)) 
-            nimg = self.__normalize__(img)
-            targets.append(nimg)
+            #nimg = self.__normalize__(img)
+            targets.append(img)
         return np.array(targets)
 
 
@@ -88,7 +88,7 @@ class VAE(keras.Model):
         ]
 
     def weighted_binary_crossentropy(self,target, output):
-        loss = -(85.0 * target * K.log(output) + 15.0 * (1.0 - target) * K.log(1.0 - output)) / 100.0
+        loss = -(95.0 * target * K.log(output) + 5.0 * (1.0 - target) * K.log(1.0 - output)) / 100.0
         return loss
 
     def __loss_fcn(self,data):
@@ -101,7 +101,7 @@ class VAE(keras.Model):
                 )
             )
         kl_loss = -0.5 * (1 + z_log_var - tf.square(z_mean) - tf.exp(z_log_var))
-        kl_loss = tf.reduce_mean(tf.reduce_sum(kl_loss, axis=1))
+        kl_loss = tf.reduce_mean(tf.reduce_sum(kl_loss, axis=1))*0.001
         
         #reconstruction_loss = K.mean(self.weighted_binary_crossentropy(data, K.clip(reconstruction, 1e-7, 1.0 - 1e-7)))     
         #kl_factor = 1
@@ -245,8 +245,7 @@ def normalize(img):
         return img.astype(np.float32)
 
 def scheduler(epoch):
-   epoch = epoch-43
-   initial_lrate = 0.01
+   initial_lrate = 0.005
    drop = 0.5
    epochs_drop = 10.0
    lrate = initial_lrate * math.pow(drop,  
@@ -265,7 +264,7 @@ def main():
     #tree = ET.parse(xml)
     #root = tree.getroot()
     #targets,labels = load_data(images,root)
-    """
+    
     list_of_imgs = glob.glob(os.path.join(images,'*.png'))
     
 
@@ -280,10 +279,10 @@ def main():
     random.shuffle(x_train)
     len(x_train)
     print('loaded {} samples'.format(num_samples))
-    """
-    (x_train,y_train),(x_test,y_test)=keras.datasets.mnist.load_data()
-    num_train = len(x_train)
-    num_samples = len(x_test)+num_train
+    
+    #(x_train,y_train),(x_test,y_test)=keras.datasets.mnist.load_data()
+    #num_train = len(x_train)
+    #num_samples = len(x_test)+num_train
     
     latent_space_dim = 10
     img_size = (256,256)
@@ -295,14 +294,14 @@ def main():
 
 
     models = os.path.join(args.timestp,'models_1')   
-    created_dir = True
+    created_dir = False
     n = 1
 
-    #encoder.load_weights(os.path.join(models,'encoder_weights4.h5'))
-    #decoder.load_weights(os.path.join(models,'decoder_weights4.h5'))
+    encoder.load_weights(os.path.join(models,'encoder_weights3.h5'))
+    decoder.load_weights(os.path.join(models,'decoder_weights3.h5'))
 
     vae = VAE(encoder, decoder)
-    sgd = keras.optimizers.SGD(lr = 0.005, momentum = 0.6, nesterov = True)
+    #sgd = keras.optimizers.SGD(lr = 0.005, momentum = 0.6, nesterov = True)
     #vae.compile(optimizer=sgd)
     vae.compile(optimizer=keras.optimizers.Adam(learning_rate=0.005),run_eagerly=False)
 
@@ -326,18 +325,18 @@ def main():
         
         print('STARTING TRAINING')
         # Callbacks:
-        tb = keras.callbacks.TensorBoard(log_dir=os.path.join(models,'logs4'), histogram_freq=0, write_graph=True, write_images=True)
-        es = keras.callbacks.EarlyStopping(monitor="val_loss",min_delta=0,patience=20,restore_best_weights=True)
+        tb = keras.callbacks.TensorBoard(log_dir=os.path.join(models,'logs'), histogram_freq=0, write_graph=True, write_images=True)
+        es = keras.callbacks.EarlyStopping(monitor="val_loss",min_delta=0,patience=25,restore_best_weights=True)
         lrs = tf.keras.callbacks.LearningRateScheduler(scheduler)
         try:
             vae.fit(my_training_batch_generator,
                     steps_per_epoch=(num_train // batch_size),
-                    epochs=200,
+                    epochs=100,
                     #initial_epoch=118,
                     #verbose=1,
                     validation_data=my_validation_batch_generator,
                     validation_steps=((num_samples-num_train) // batch_size),
-                    callbacks=[tb,es])
+                    callbacks=[tb,es,lrs])
         except Exception as e:
             logger.error(e)
             return

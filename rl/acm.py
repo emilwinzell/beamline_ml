@@ -64,7 +64,7 @@ class RaycingEnv():
     
         [a0,a1,a2],_ = optimize.curve_fit(poly, xlim, data)
 
-        if a2 < 0:
+        if a2 > 0:
             amin = -a1/(2*a2)
         else:
             amin = x[np.argmin(poly(x, a0,a1,a2))]
