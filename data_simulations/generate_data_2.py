@@ -362,8 +362,8 @@ def define_plots(beamLine,bins,limit):
 
     for i, dq in enumerate(beamLine.scrTgt11.dqs):
         plot = xrtp.XYCPlot('beamscrTgt_{0:02d}'.format(i),
-                                xaxis=xrtp.XYCAxis('$x$', 'mm',limits=[-limit,limit],bins=bins, ppb=2),
-                                yaxis=xrtp.XYCAxis( '$z$', 'mm',limits=[-limit,limit],bins=bins, ppb=2))
+                                xaxis=xrtp.XYCAxis('$x$', 'mm',limits=None,bins=bins, ppb=2),
+                                yaxis=xrtp.XYCAxis( '$z$', 'mm',limits=None,bins=bins, ppb=2))
 
         plot.xaxis.fwhmFormatStr = '%.4f'
         plot.yaxis.fwhmFormatStr = '%.4f'
@@ -428,7 +428,102 @@ def _stack_size2a(size=2):
             return size
 
 
-def data_rand_generator(num_samples,plots,beamLine,name,save_path,xml_root):
+def data_generator(num_samples,plots,beamLine,name,save_path,xml_root):
+    img_path = os.path.join(save_path,'images')
+    hist_path = os.path.join(save_path,'histograms')
+
+    last_sample = xml_root[-1].tag.split('_')[-1]
+    if last_sample.isnumeric():
+        start = int(last_sample) + 1
+    else:
+        start =  0
+
+    # Define param limits, all in radians
+    pitch_lim = 0.003
+    yaw_lim = 0.001
+    roll_lim = 0.001
+    lat_lim = 5.0
+    vert_lim = 2.5
+
+    pitches = np.linspace(-pitch_lim,pitch_lim,num_samples)
+    yaws = np.linspace(-yaw_lim,yaw_lim,num_samples)
+    rolls = np.linspace(-roll_lim,roll_lim,num_samples)
+    lat = np.linspace(-lat_lim,lat_lim,num_samples) 
+    vert = np.linspace(-vert_lim,vert_lim,num_samples) 
+    input_list = [pitches, yaws, rolls, lat, vert]
+    # pick one random setting:
+    sample_count = 0
+    for i,list in enumerate(input_list):
+        beamLine.M4.extraPitch = 0.0
+        beamLine.M4.extraYaw = 0.0
+        beamLine.M4.extraRoll = 0.0
+        beamLine.M4.center = [m4Center[0],m4Center[1],m4Center[2]]
+        for l in list:
+
+            if _stack_size2a(i) > sys.getrecursionlimit()-200:
+                print('Getting close to recursion limit, ending')
+                return
+
+            # Set M4 mirror
+            if i == 0:
+                beamLine.M4.extraPitch = l
+            elif i == 1:
+                beamLine.M4.extraYaw = l
+            elif i == 2:
+                beamLine.M4.extraRoll = l
+            elif i == 3:
+                beamLine.M4.center = [m4Center[0]+l,m4Center[1],m4Center[2]]
+            elif i == 4:
+                beamLine.M4.center = [m4Center[0],m4Center[1],m4Center[2]+l]
+
+            yield # Return to raytracing, will start here again when done
+
+            imgnr=0
+            images = []
+            axes = []
+            for plot in plots:
+                # save 2D intensity image
+                s_str = str(sample_count).zfill(5)
+                i_str = str(imgnr).zfill(2)
+                save_name = name + '_'  + s_str + '_' + i_str + '.png'
+                t2D = plot.total2D_RGB
+                t2D = np.log(t2D+1)
+                if t2D.max() > 0:
+                    t2D = t2D*65535.0/t2D.max()
+                t2D = np.uint16(cv.flip(t2D,0))
+                t2D = cv.cvtColor(t2D,cv.COLOR_RGB2GRAY)
+                cv.imwrite(os.path.join(img_path,save_name),t2D)
+                imgnr += 1
+                images.append(save_name)
+                axes.append((plot.cx,plot.dx,plot.cy,plot.dy))
+                #print('X: ', plot.dx)
+                #print('Y: ', plot.dy)
+
+                # save 1D histograms
+                xt1D = plot.xaxis.total1D
+                xbinEdges = plot.xaxis.binEdges
+                zt1D = plot.yaxis.total1D
+                zbinEdges = plot.yaxis.binEdges
+                data_df = pd.DataFrame({'xt1D':np.append(xt1D,0.0),
+                                        'yt1D':np.append(zt1D,0.0),
+                                        'xbinEdges':xbinEdges,
+                                        'ybinEdges':zbinEdges})
+                save_name = name + '_'  + s_str + '_' + i_str + '.csv'
+                filename = os.path.join(hist_path, save_name)
+                data_df.to_csv(filename, index=False)
+
+                # reset axis limits for plot
+                plot.xaxis.limits = None
+                plot.yaxis.limits = None
+            
+
+            # save label data to xml
+            sets = (beamLine.M4.extraPitch,beamLine.M4.extraYaw,beamLine.M4.extraRoll,beamLine.M4.center[0]-m4Center[0],beamLine.M4.center[2]-m4Center[2])
+            xml_root = _build_xml(xml_root,sample_count,sets,images,axes)
+            sample_count += 1
+
+
+def data_rand_generator(num_samples,bins,plots,beamLine,name,save_path,xml_root):
     img_path = os.path.join(save_path,'images')
     hist_path = os.path.join(save_path,'histograms')
 
@@ -442,13 +537,15 @@ def data_rand_generator(num_samples,plots,beamLine,name,save_path,xml_root):
     pitch_lim = 0.001
     yaw_lim = 0.02
     roll_lim = 0.02
+    #lat_lim = 1.5
+    #ver_lim = 2.5
     # pick one random setting:
     for i in range(num_samples):
-        pitch = 0.0005*np.random.randn()#np.random.uniform(-pitch_lim,pitch_lim)
-        yaw = 0.01*np.random.randn()#np.random.uniform(-yaw_lim,yaw_lim)
-        roll = 0.01*np.random.randn()#np.random.uniform(-roll_lim,roll_lim)
-        exX = 0.2*np.random.randn()
-        exZ = 0.2*np.random.randn()
+        pitch = np.random.uniform(-pitch_lim,pitch_lim)
+        yaw = np.random.uniform(-yaw_lim,yaw_lim)
+        roll = np.random.uniform(-roll_lim,roll_lim)
+        exX = 0.8*np.random.randn()
+        exZ = np.random.randn()
 
         if _stack_size2a(i) > sys.getrecursionlimit()-200:
             print('Getting close to recursion limit, ending')
@@ -459,6 +556,7 @@ def data_rand_generator(num_samples,plots,beamLine,name,save_path,xml_root):
         beamLine.M4.extraYaw = yaw
         beamLine.M4.extraRoll = roll
         beamLine.M4.center = [m4Center[0]+exX,m4Center[1],m4Center[2]+exZ]
+       
 
         yield # Return to raytracing, will start here again when done
 
@@ -470,12 +568,28 @@ def data_rand_generator(num_samples,plots,beamLine,name,save_path,xml_root):
             s_str = str(i+start).zfill(5)
             i_str = str(imgnr).zfill(2)
             save_name = name + '_'  + s_str + '_' + i_str + '.png'
+ 
             t2D = plot.total2D_RGB
             t2D = np.log(t2D+1)
             if t2D.max() > 0:
                 t2D = t2D*65535.0/t2D.max()
             t2D = np.uint16(cv.flip(t2D,0))
             t2D = cv.cvtColor(t2D,cv.COLOR_RGB2GRAY)
+
+            pad_x = int((bins*2.0/plot.dx-bins)/2)
+            pad_y = int((bins*2.0/plot.dy-bins)/2)
+            if pad_x > 0 :
+                xt2D = cv.copyMakeBorder(t2D,0,0,pad_x,pad_x,borderType=cv.BORDER_CONSTANT)
+            else:
+                xt2D = t2D[abs(pad_x):bins-abs(pad_x),:]
+            
+            if pad_y > 0:
+                yt2D = cv.copyMakeBorder(xt2D,pad_y,pad_y,0,0,borderType=cv.BORDER_CONSTANT)
+            else:
+                yt2D = xt2D[:,abs(pad_y):bins-abs(pad_y)]
+
+            t2D = cv.resize(yt2D,(bins,bins))
+
             cv.imwrite(os.path.join(img_path,save_name),t2D)
             imgnr += 1
             images.append(save_name)
@@ -495,8 +609,12 @@ def data_rand_generator(num_samples,plots,beamLine,name,save_path,xml_root):
             data_df.to_csv(filename, index=False)
 
             # reset axis limits for plot
-            #plot.xaxis.limits = None
-            #plot.yaxis.limits = None
+            plot.xaxis.limits = None
+            plot.yaxis.limits = None
+            plot.xaxis.binEdges = np.zeros(bins + 1)
+            plot.xaxis.total1D = np.zeros(bins)
+            plot.yaxis.binEdges = np.zeros(bins + 1)
+            plot.yaxis.total1D = np.zeros(bins)
 
         # save label data to xml
         sets = (pitch,yaw,roll,exX,exZ)
@@ -542,9 +660,9 @@ def main():
     rr.run_process = run_process
     beamLine = build_beamLine(nrays=numrays)
 
-    bins = 512
+    bins = 256
     xz_lim = 2
-    num_samples = 10
+    num_samples = 5
     plots, plotsSL = define_plots(beamLine,bins,xz_lim)
 
     if args.timestp is None:
@@ -578,7 +696,7 @@ def main():
 
     xrtr.run_ray_tracing(
         plots,repeats=repeats, updateEvery=repeats, beamLine=beamLine,
-        generator=data_rand_generator, generatorArgs=(num_samples,plots,beamLine,timestp,path,root),
+        generator=data_rand_generator, generatorArgs=(num_samples,bins,plots,beamLine,timestp,path,root),
         afterScript=write_xml, afterScriptArgs=(path,root,))#, threads=1,processes=4)
     
     print('\n DONE')
