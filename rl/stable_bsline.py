@@ -62,8 +62,8 @@ class RaycingEnv(gym.Env):
         self.bounds = np.array([self.beamline.p_lim, self.beamline.y_lim, self.beamline.r_lim, self.beamline.l_lim, self.beamline.v_lim])
         
         self.action_space = spaces.Box(-self.bounds, self.bounds, dtype=np.float32)
-        self.observation_space = spaces.Box(np.array([0.0, 0.0, -10.0]),
-                                            np.array([50.0, 50.0, 10.0]), dtype=np.float32)
+        self.observation_space = spaces.Box(np.array([0.0, 0.0, -1.0, 0.0]),
+                                            np.array([50.0, 50.0, 1.0, 1.5]), dtype=np.float32)
         
         self.num_steps = 0
         self.state = None
@@ -100,6 +100,28 @@ class RaycingEnv(gym.Env):
             amin = 1000.0
         
         return amin
+    
+    def __calculate_vad(self,data,xlim):
+        ub = np.max(data)
+        lb = np.min(data)
+        if ub-lb > 0:
+            mapk = 28/(ub-lb)
+        else:
+            mapk = 1
+        mapm = 14-mapk*ub
+
+        rescaled = mapk*np.array(data)+mapm
+
+        def dis_cont(x, a1,b1,a2,b2,c):
+            return np.where(x <= c, a1*x+b1, a2*x+b2)
+
+        [k1,m1,k2,m2,r],_ = optimize.curve_fit(dis_cont, xlim, rescaled)
+        
+        
+        inc1 = np.arctan(k1)*180/np.pi
+        inc2 = np.arctan(k2)*180/np.pi
+        value = abs(inc1+inc2)
+        return value
 
     def __get_observation(self):
         f_x = []
@@ -118,23 +140,22 @@ class RaycingEnv(gym.Env):
                 f_y.append(50.0)
             else:
                 f_y.append(self.__calculate_fwhm(yt1D,yBins,1000))
-            
+        
         xmin = self.__calculate_argmin(f_x, self.beamline.scrTgt11.dqs, 1000)
-        ymin = self.__calculate_argmin(f_y, self.beamline.scrTgt11.dqs, 1000)
-        gap = xmin-ymin
+        vad = self.__calculate_vad(f_y, self.beamline.scrTgt11.dqs)
+        ymin = self.beamline.scrTgt11.dqs[np.argmin(f_y)]
+        gap = (xmin-ymin)/1000.0
+        vad = vad/100.0 
         FWHMx = min(f_x)
         FWHMy = min(f_y)
-        if gap == 0.0:
-            gap = 1000.0
-        gap = np.clip(gap/1000.0,-10.0,10.0) # normalize
         
-        state =  [FWHMx,FWHMy,gap]
+        state =  np.array([FWHMx,FWHMy,gap,vad])
 
-        reward = -FWHMx - FWHMy - abs(gap)
+        reward = -FWHMx - FWHMy - abs(np.clip(gap,-1.0,1.0)) - vad
 
         # Done?
         done = False
-        if gap < 1.5/1000.0 and FWHMx < 0.02 and FWHMy < 0.02:
+        if gap < 3.0/1000.0 and FWHMx < 0.01 and FWHMy < 0.005 and vad < 1.0/100.0:
             done = True
             reward = 300 # max possible steps is 290
         
@@ -145,6 +166,10 @@ class RaycingEnv(gym.Env):
         for plot in self.beamline.plots:
                 plot.xaxis.limits = None
                 plot.yaxis.limits = None
+                plot.xaxis.binEdges = np.zeros(self.beamline.bins + 1)
+                plot.xaxis.total1D = np.zeros(self.beamline.bins)
+                plot.yaxis.binEdges = np.zeros(self.beamline.bins + 1)
+                plot.yaxis.total1D = np.zeros(self.beamline.bins)
 
         # change bealine params
         action = np.clip(sampled_actions, -self.bounds, self.bounds)
