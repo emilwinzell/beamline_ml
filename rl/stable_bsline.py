@@ -1,6 +1,6 @@
 import os
 import sys
-#sys.stdout = open('ddpg_output.txt','wt')
+sys.stdout = open('stb_output.txt','wt')
 
 import xrt.backends.raycing.run as rr
 import xrt.plotter as xrtp
@@ -54,9 +54,9 @@ class RaycingEnv(gym.Env):
 
     """
     
-    def __init__(self):
+    def __init__(self,nrays):
         super(RaycingEnv, self).__init__()
-        self.beamline = VeritasSimpleBeamline() # vsb object
+        self.beamline = VeritasSimpleBeamline(nrays=nrays) # vsb object
         rr.run_process = self.beamline.run_process
 
         self.bounds = np.array([self.beamline.p_lim, self.beamline.y_lim, self.beamline.r_lim, self.beamline.l_lim, self.beamline.v_lim])
@@ -175,16 +175,16 @@ class RaycingEnv(gym.Env):
         action = np.clip(sampled_actions, -self.bounds, self.bounds)
         self.beamline.update_m4(action)
 
-        print('taking action..')
         sys.stdout = open(os.devnull, 'w')
         xrtr.run_ray_tracing(self.beamline.plots,repeats=self.beamline.repeats, 
                     updateEvery=self.beamline.repeats, beamLine=self.beamline)#,threads=3,processes=8)
-        sys.stdout = sys.__stdout__
+        sys.stdout = open('stb_output.txt','a')
 
     def reset(self):
         #self.beamline = VeritasSimpleBeamline()
-        self.beamline = VeritasSimpleBeamline() # vsb object
-        rr.run_process = self.beamline.run_process
+        self.beamline.reset()
+        print('Set params: ', self.beamline.M4pitch, self.beamline.M4yaw, self.beamline.M4roll, self.beamline.lateral, self.beamline.vertical)
+        self.__take_action(np.zeros(5,dtype=np.float32))
         
         self.num_steps = 0
         self.state,_,_,_,_ = self.__get_observation()  # calculate state
@@ -195,6 +195,12 @@ class RaycingEnv(gym.Env):
         self.__take_action(action)
 
         self.state, reward, done, self.f_x, self.f_y = self.__get_observation()
+        print('reward: {0:.4f}, action: {1:.6f}, {2:.6f}, {3:.6f}, {4:.2f}, {5:.2f}'.format(reward,
+                                                                                                action[0],
+                                                                                                action[1],
+                                                                                                action[2],
+                                                                                                action[3],
+                                                                                                action[4]))
         
         self.num_steps += 1
 
@@ -208,12 +214,11 @@ class RaycingEnv(gym.Env):
 
 
 def main():
-    env = RaycingEnv()
+    env = RaycingEnv(nrays=10000)
 
 
     model = PPO("MlpPolicy", env, verbose=1)
-    model.learn(total_timesteps=10) # what does this do?
-
+    model.learn(total_timesteps=1) # what does this do?
 
     obs = env.reset()
     for i in range(5):
