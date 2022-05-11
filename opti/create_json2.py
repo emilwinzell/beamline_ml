@@ -4,7 +4,7 @@ scenario = {}
 scenario["application_name"] = "raycing"
 scenario["optimization_objectives"] = ["value"]
 
-scenario["optimization_iterations"] = 100
+scenario["optimization_iterations"] = 40
 
 scenario["models"] = {}
 scenario["models"]["model"] = "gaussian_process"
@@ -32,7 +32,7 @@ v["values"] = [-2.5, 2.5]
 
 scenario["input_parameters"]["pitch"] = p
 scenario["input_parameters"]["yaw"] = y
-scenario["input_parameters"]["roll"] = r
+#scenario["input_parameters"]["roll"] = r
 scenario["input_parameters"]["lateral"] = l
 scenario["input_parameters"]["vertical"] = v
 

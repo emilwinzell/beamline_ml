@@ -71,9 +71,9 @@ def optimize_bparams(beamline, filename):
 
     def raycing_fcn(X):
 
-        p = X['pitch']
-        y = X['yaw']
-        r = X['roll']
+        p = X['pitch']*1e-3
+        y = X['yaw']*1e-3
+        r = 0.0#X['roll']
         l = X['lateral']
         v = X['vertical']
 
@@ -124,7 +124,7 @@ def optimize_bparams(beamline, filename):
         
         output = {}
         #output['FWHM'] = FWHMx + FWHMy
-        output['value'] = FWHMx + FWHMy + gap/1000.0 + vad/100.0
+        output['value'] = FWHMx + FWHMy + vad/100.0
         #output['Gap'] = gap
         #output["value"] = FWHMx + FWHMy + gap
 
