@@ -110,7 +110,7 @@ class VAE(keras.Model):
     def __loss_fcn(self,data):
         z_mean, z_log_var, z = self.encoder(data)
         [x,y] = self.decoder(z)
-        scaling_loss = tf.reduce_mean(abs(data[1]-y))
+        scaling_loss = tf.reduce_mean(abs(data[1]-y))*10
         x = tf.squeeze(x)
         reconstruction_loss = tf.reduce_mean(
                 tf.reduce_sum(
@@ -168,7 +168,8 @@ def build_encoder(width=512,height=512,latent_space_dim=5):
     print('ENCODER')
     encoder_input = keras.layers.Input(shape=(width,height,1), name='encoder_input')
     ex_input = keras.layers.Input(shape=(4,), name='extra_input')
-    y = keras.layers.Dense(4,activation='relu')(ex_input)
+    y = keras.layers.Dense(16,activation='relu')(ex_input)
+    y = keras.layers.Dense(8,activation='relu')(y)
 
     x = keras.layers.Conv2D(filters=8, kernel_size=(3,3), strides=1, name='encoder_conv_1')(encoder_input)
     x = keras.layers.BatchNormalization(name='encoder_norm_1')(x)
@@ -255,7 +256,7 @@ def build_decoder(shape,latent_space_dim=5):
     x = keras.layers.LeakyReLU(name="decoder_output")(x)
     print(x.shape)
 
-    y = keras.layers.Dense(4,name="decoder_dense_ex_1")(decoder_input)
+    y = keras.layers.Dense(16,name="decoder_dense_ex_1")(decoder_input)
     y = keras.layers.Dense(4,name="decoder_dense_ex_2")(y)
     print(y.shape)
 
@@ -272,18 +273,18 @@ def normalize(img):
         return img.astype(np.float32)
 
 def scheduler(epoch):
-   initial_lrate = 0.001
+   initial_lrate = 0.005
    drop = 0.7
-   epochs_drop = 5.0
+   epochs_drop = 10.0
    lrate = initial_lrate * math.pow(drop,  
-           math.floor((1+epoch)/epochs_drop)) + 0.0001
+           math.floor((1+epoch)/epochs_drop)) + 0.001
    return lrate
 
 def main():
-    train = True #CHANGE TO FALSE TO EVALUATE MODEL
+    train = True#CHANGE TO FALSE TO EVALUATE MODEL
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("-t", "--timestp",default='/home/emiwin/exjobb/ellipses2' ,help=" path to timestamp data folder")
+    parser.add_argument("-t", "--timestp",default='/home/emiwin/exjobb/05120912' ,help=" path to timestamp data folder")
     args = parser.parse_args()
 
     latent_space_dim = 10
@@ -309,11 +310,11 @@ def main():
     random.shuffle(x_train)
     print('loaded {} samples'.format(num_samples))
     
-    models = os.path.join(args.timestp,'models_1')   
+    models = os.path.join(args.timestp,'models_3')  #'/home/emiwin/exjobb/05120912/models_3'# 
     created_dir = False
     n = 1
-    #encoder.load_weights(os.path.join(models,'encoder_weights3.h5'))
-    #decoder.load_weights(os.path.join(models,'decoder_weights3.h5'))
+    encoder.load_weights(os.path.join(models,'encoder_weights.h5'))
+    decoder.load_weights(os.path.join(models,'decoder_weights.h5'))
 
     vae = VAE(encoder, decoder)
     #sgd = keras.optimizers.SGD(lr = 0.005, momentum = 0.6, nesterov = True)
@@ -321,7 +322,7 @@ def main():
     vae.compile(optimizer=keras.optimizers.Adam(learning_rate=0.005),run_eagerly=False)
 
     # Batch generators:
-    batch_size = 200
+    batch_size = 300
     my_training_batch_generator = My_Generator(x_train, root, batch_size)
     my_validation_batch_generator = My_Generator(x_test, root, batch_size)
 
@@ -346,12 +347,12 @@ def main():
         try:
             vae.fit(my_training_batch_generator,
                     steps_per_epoch=(num_train // batch_size),
-                    epochs=100,
-                    #initial_epoch=118,
+                    epochs=500,
+                    initial_epoch=200,
                     #verbose=1,
                     validation_data=my_validation_batch_generator,
                     validation_steps=((num_samples-num_train) // batch_size),
-                    callbacks=[tb,es,lrs])
+                    callbacks=[tb,lrs])
         except Exception as e:
             logger.error(e)
             return
@@ -367,27 +368,33 @@ def main():
         #decoder =  keras.models.load_model(os.path.join(models,'VAE_decoder'))
         #vae = VAE(encoder, decoder)
         #vae.compile(optimizer=keras.optimizers.Adam(learning_rate=0.0005))
-        encoder.load_weights(os.path.join(models,'encoder_weights5.1.h5'))
-        decoder.load_weights(os.path.join(models,'decoder_weights5.1.h5'))
+        encoder.load_weights(os.path.join(models,'encoder_weights2.h5'))
+        decoder.load_weights(os.path.join(models,'decoder_weights2.h5'))
         #encoder.save_weights(os.path.join(models,'encoder_weights.h5'))
         #decoder.save_weights(os.path.join(models,'decoder_weights.h5'))
         
         x_test = my_validation_batch_generator.__getitem__(0)
+        input_imgs = x_test[0]
+        input_scales = x_test[1]
         
         encoded_data = encoder.predict(x_test)
-        decoded_data = decoder.predict(encoded_data[2])
+        [decoded_data,scale] = decoder.predict(encoded_data[2])
+        print(decoded_data.shape)
+        print(scale.shape)
 
         for n in range(100):
             img = decoded_data[n,:,:,:]
-            org = x_test[n,:,:]
+            org = input_imgs[n,:,:]
             img[img < 0] = 0
+            print(scale[n,:])
+            print(input_scales[n,:])
             #img = abs(img)
-            print(img.max())
+            #print(img.max())
             img = img*255/img.max()
             org = org*255
             img = img.astype(np.uint8)
             org = org.astype(np.uint8)
-            print(org.max())
+            #print(org.max())
             cv.imshow('Decoded',img)
             cv.imshow('Org',org)
             cv.waitKey(0)

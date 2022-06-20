@@ -5,7 +5,7 @@
 # April 2022
 import os
 import sys
-sys.stdout = open('ddpg_output.txt','wt')
+sys.stdout = open('ddpg_output2.txt','wt')
 
 import xrt.backends.raycing.run as rr
 import xrt.plotter as xrtp
@@ -68,8 +68,8 @@ class RaycingEnv():
         self.beamline = VeritasSimpleBeamline() # vsb object
         rr.run_process = self.beamline.run_process
 
-        self.bounds = np.array([self.beamline.p_lim, self.beamline.y_lim, self.beamline.r_lim, self.beamline.l_lim, self.beamline.v_lim])
-        
+        #self.bounds = np.array([self.beamline.p_lim, self.beamline.y_lim, self.beamline.r_lim, self.beamline.l_lim, self.beamline.v_lim])
+        self.bounds = np.array([3,1,1,1.5,2.5])
         #self.action_space = spaces.Box(-self.bounds, self.bounds, dtype=np.float32)
         #self.observation_space = spaces.Box(np.array([0.0, 0.0, -10.0]),
         #                                    np.array([50.0, 50.0, 10.0]), dtype=np.float32)
@@ -113,11 +113,14 @@ class RaycingEnv():
     def __get_observation(self):
         f_x = []
         f_y = []
-        for plot in self.beamline.plots:
+        for i,plot in enumerate(self.beamline.plots):
             xt1D = np.append(plot.xaxis.total1D,0.0)
             xBins = plot.xaxis.binEdges
             yt1D = np.append(plot.yaxis.total1D,0.0)
             yBins = plot.yaxis.binEdges
+
+            if i == 4:
+                t_dist = np.sqrt(np.square(plot.cx)+np.square(plot.cy))/30
 
             if plot.dx == 0: 
                 f_x.append(50.0)
@@ -129,23 +132,23 @@ class RaycingEnv():
                 f_y.append(self.__calculate_fwhm(yt1D,yBins,1000))
             
         xmin = self.__calculate_argmin(f_x, self.beamline.scrTgt11.dqs, 1000)
-        ymin = self.__calculate_argmin(f_y, self.beamline.scrTgt11.dqs, 1000)
+        ymin = self.beamline.scrTgt11.dqs[np.argmin(f_y)]#self.__calculate_argmin(f_y, self.beamline.scrTgt11.dqs, 1000)
         gap = xmin-ymin
         FWHMx = min(f_x)
-        FWHMy = min(f_y)
-        if gap == 0.0:
-            gap = 1000.0
+        FWHMy = min(f_y)*2
+        #if gap == 0.0:
+        #    gap = 1000.0
         gap = np.clip(gap/1000.0,-1.0,1.0) # normalize
         
         state =  np.array([FWHMx,FWHMy,gap])
 
-        reward = -FWHMx - FWHMy - abs(gap)
+        reward = -FWHMx - FWHMy - abs(gap)- t_dist
 
         # Done?
         done = False
-        if abs(gap) < 1.5/1000.0 and FWHMx < 0.01 and FWHMy < 0.005:
+        if abs(gap) < 3/1000.0 and FWHMx < 0.012 and FWHMy < 0.008:
             done = True
-            reward = 300 # max possible steps is 290
+            reward = 1000 # max possible steps is 290
         
         return state, reward, done, f_x, f_y
 
@@ -165,7 +168,7 @@ class RaycingEnv():
 
         
         xrtr.run_ray_tracing(self.beamline.plots,repeats=self.beamline.repeats, 
-                    updateEvery=self.beamline.repeats, beamLine=self.beamline,threads=3,processes=8)
+                    updateEvery=self.beamline.repeats, beamLine=self.beamline,threads=3,processes=12)
         
 
     def reset(self):
@@ -179,9 +182,10 @@ class RaycingEnv():
         return np.array(self.f_x + self.f_y)
 
     def step(self, action):
+        action[:3] = action[:3]*0.001
         sys.stdout = open(os.devnull, 'w')
         self.__take_action(action)
-        sys.stdout = open('ddpg_output.txt','a')#sys.__stdout__
+        sys.stdout = open('ddpg_output2.txt','a')#sys.__stdout__
 
         self.state, reward, done, self.f_x, self.f_y = self.__get_observation()
         
@@ -357,10 +361,10 @@ class Buffer:
         return np.squeeze(legal_action)
 
     def save_weights(self, model_dir):
-        self.actor_model.save_weights(os.path.join(model_dir,'am_weights.h5'))
-        self.critic_model.save_weights(os.path.join(model_dir,'cr_weights.h5'))
-        self.target_actor.save_weights(os.path.join(model_dir,'ta_weights.h5'))
-        self.target_critic.save_weights(os.path.join(model_dir,'tc_weights.h5'))
+        self.actor_model.save_weights(os.path.join(model_dir,'am_weights2.h5'))
+        self.critic_model.save_weights(os.path.join(model_dir,'cr_weights2.h5'))
+        self.target_actor.save_weights(os.path.join(model_dir,'ta_weights2.h5'))
+        self.target_critic.save_weights(os.path.join(model_dir,'tc_weights2.h5'))
         print('Weights saved at: ', model_dir)
 
 
@@ -402,18 +406,9 @@ def get_critic(num_states,num_actions):
     return model
 
 
-# Disable
-def blockPrint():
-    sys.stdout = open(os.devnull, 'w')
-
-# Restore
-def enablePrint():
-    sys.stdout = open('ddpg_output.txt','a')#sys.__stdout__
-
-
 def train(env, model_dir, num_states, num_actions):
     std_dev = np.array([0.001, 0.0005, 0.0005, 1 ,0.5])
-    ou_noise = OUActionNoise(mean=np.zeros(5), std_deviation=std_dev)
+    ou_noise = NoiseProcess(mean=np.zeros(5), std_deviation=std_dev)#OUActionNoise(mean=np.zeros(5), std_deviation=std_dev)
 
     actor_model = get_actor(num_states,num_actions,env.bounds)
     critic_model = get_critic(num_states,num_actions)
@@ -422,18 +417,18 @@ def train(env, model_dir, num_states, num_actions):
     target_critic = get_critic(num_states,num_actions)
 
     # Making the weights equal initially
-    target_actor.set_weights(actor_model.get_weights())
-    target_critic.set_weights(critic_model.get_weights())
-    #actor_model.load_weights(os.path.join(model_dir,'am_weights2.h5'))
-    #critic_model.load_weights(os.path.join(model_dir,'cr_weights2.h5'))
-    #target_actor.load_weights(os.path.join(model_dir,'ta_weights2.h5'))
-    #target_critic.load_weights(os.path.join(model_dir,'tc_weights2.h5'))
+    #target_actor.set_weights(actor_model.get_weights())
+    #target_critic.set_weights(critic_model.get_weights())
+    actor_model.load_weights(os.path.join(model_dir,'am_weights.h5'))
+    critic_model.load_weights(os.path.join(model_dir,'cr_weights.h5'))
+    target_actor.load_weights(os.path.join(model_dir,'ta_weights.h5'))
+    target_critic.load_weights(os.path.join(model_dir,'tc_weights.h5'))
 
     # Learning rate for actor-critic models
     critic_lr = 0.002
     actor_lr = 0.001
 
-    optimizers = [tf.keras.optimizers.Adam(actor_lr,clipnorm=5), tf.keras.optimizers.Adam(critic_lr, clipnorm=5)]
+    optimizers = [tf.keras.optimizers.Adam(actor_lr,clipnorm=0.1), tf.keras.optimizers.Adam(critic_lr, clipnorm=0.1)]
     models = [actor_model, critic_model, target_actor, target_critic]
 
     total_episodes = 20
@@ -495,6 +490,7 @@ def train(env, model_dir, num_states, num_actions):
     #am = os.path.join(models,'actor_model')
     #actor_model.save(am)
     buffer.save_weights(model_dir)
+    print(avg_reward_list)
     # Plotting graph
     # Episodes versus Avg. Rewards
     # plt.plot(avg_reward_list)
@@ -505,8 +501,8 @@ def train(env, model_dir, num_states, num_actions):
     
 def main():
     n=1
-    model_dir = 'ddpg_models_{}'.format(n)
-    created_dir = False
+    model_dir = 'ddpg_models_1'.format(n)
+    created_dir = True
     while not created_dir:
             try:
                 os.mkdir(model_dir)

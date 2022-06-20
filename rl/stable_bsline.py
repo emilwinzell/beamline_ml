@@ -16,6 +16,7 @@ import time
 from scipy import optimize
 
 from stable_baselines3 import PPO
+from stable_baselines3 import DQN
 
 from vsb import VeritasSimpleBeamline
 
@@ -59,11 +60,12 @@ class RaycingEnv(gym.Env):
         self.beamline = VeritasSimpleBeamline(nrays=nrays) # vsb object
         rr.run_process = self.beamline.run_process
 
-        self.bounds = np.array([self.beamline.p_lim, self.beamline.y_lim, self.beamline.r_lim, self.beamline.l_lim, self.beamline.v_lim])
+        #self.bounds = np.array([self.beamline.p_lim, self.beamline.y_lim, self.beamline.r_lim, self.beamline.l_lim, self.beamline.v_lim])
+        self.bounds = np.array([1,1,1,1,1])
         
         self.action_space = spaces.Box(-self.bounds, self.bounds, dtype=np.float32)
-        self.observation_space = spaces.Box(np.array([0.0, 0.0, -1.0, 0.0]),
-                                            np.array([50.0, 50.0, 1.0, 1.5]), dtype=np.float32)
+        self.observation_space = spaces.Box(np.zeros(18),
+                                            np.ones(18), dtype=np.float32)
         
         self.num_steps = 0
         self.state = None
@@ -126,40 +128,42 @@ class RaycingEnv(gym.Env):
     def __get_observation(self):
         f_x = []
         f_y = []
-        for plot in self.beamline.plots:
+        for n,plot in enumerate(self.beamline.plots):
             xt1D = np.append(plot.xaxis.total1D,0.0)
             xBins = plot.xaxis.binEdges
             yt1D = np.append(plot.yaxis.total1D,0.0)
             yBins = plot.yaxis.binEdges
+            if n == 4:
+                t_dist = np.sqrt(np.square(plot.cx)+np.square(plot.cy))/5
 
             if plot.dx == 0: 
-                f_x.append(50.0)
+                f_x.append(1.0)
             else:
                 f_x.append(self.__calculate_fwhm(xt1D,xBins,1000))
             if plot.dy == 0:
-                f_y.append(50.0)
+                f_y.append(1.0)
             else:
                 f_y.append(self.__calculate_fwhm(yt1D,yBins,1000))
         
         xmin = self.__calculate_argmin(f_x, self.beamline.scrTgt11.dqs, 1000)
-        vad = self.__calculate_vad(f_y, self.beamline.scrTgt11.dqs)
+        #vad = self.__calculate_vad(f_y, self.beamline.scrTgt11.dqs)
         ymin = self.beamline.scrTgt11.dqs[np.argmin(f_y)]
         gap = (xmin-ymin)/1000.0
-        vad = vad/100.0 
-        FWHMx = min(f_x)
-        FWHMy = min(f_y)
+        #vad = vad/100.0 
+        FWHMx = min(f_x)/0.12
+        FWHMy = min(f_y)/0.05
         
-        state =  np.array([FWHMx,FWHMy,gap,vad])
+        state =  np.array([f_x+f_y])#np.array([FWHMx,FWHMy,gap,vad])
 
-        reward = -FWHMx - FWHMy - abs(np.clip(gap,-1.0,1.0)) - vad
+        reward = -FWHMx - FWHMy -t_dist #abs(np.clip(gap,-1.0,1.0)) #- vad
 
         # Done?
         done = False
-        if gap < 3.0/1000.0 and FWHMx < 0.01 and FWHMy < 0.005 and vad < 1.0/100.0:
+        if gap < 3.0/1000.0 and FWHMx < 0.012 and FWHMy < 0.006: #and vad < 1.0/100.0:
             done = True
             reward = 300 # max possible steps is 290
         
-        return state, reward, done, f_x, f_y
+        return state, reward, done#, f_x, f_y
 
 
     def __take_action(self, sampled_actions):
@@ -172,12 +176,12 @@ class RaycingEnv(gym.Env):
                 plot.yaxis.total1D = np.zeros(self.beamline.bins)
 
         # change bealine params
-        action = np.clip(sampled_actions, -self.bounds, self.bounds)
-        self.beamline.update_m4(action)
+        
+        self.beamline.update_m4(sampled_actions)
 
         sys.stdout = open(os.devnull, 'w')
         xrtr.run_ray_tracing(self.beamline.plots,repeats=self.beamline.repeats, 
-                    updateEvery=self.beamline.repeats, beamLine=self.beamline)#,threads=3,processes=8)
+                    updateEvery=self.beamline.repeats, beamLine=self.beamline,threads=3,processes=9)
         sys.stdout = open('stb_output.txt','a')
 
     def reset(self):
@@ -187,14 +191,16 @@ class RaycingEnv(gym.Env):
         self.__take_action(np.zeros(5,dtype=np.float32))
         
         self.num_steps = 0
-        self.state,_,_,_,_ = self.__get_observation()  # calculate state
-        return self.state
+        self.state,_,_= self.__get_observation()  # calculate state
+        return self.state#np.array(self.f_x + self.f_y)#
 
     def step(self, action):
-
+        action = np.clip(action, -self.bounds, self.bounds)
+        action = action*np.array([0.003,0.001,0.001,1.5,2.5]) #switch to correct unit
+        #action[:3] = action[:3]*0.001
         self.__take_action(action)
 
-        self.state, reward, done, self.f_x, self.f_y = self.__get_observation()
+        self.state, reward, done = self.__get_observation()
         print('reward: {0:.4f}, action: {1:.6f}, {2:.6f}, {3:.6f}, {4:.2f}, {5:.2f}'.format(reward,
                                                                                                 action[0],
                                                                                                 action[1],
@@ -204,29 +210,33 @@ class RaycingEnv(gym.Env):
         
         self.num_steps += 1
 
-        return self.state, reward, done, {}
+        return self.state, reward, done, {} #np.array(self.f_x + self.f_y)
 
     def render(self):
-        print('fwhm x: ', self.f_x)
-        print('fwhm y: ', self.f_y)
-        print('state: ', self.state)
+        #print('fwhm x: ', self.f_x)
+        #print('fwhm y: ', self.f_y)
+        #print('state: ', self.state)
+        return
 
 
 
 def main():
     env = RaycingEnv(nrays=10000)
 
-
-    model = PPO("MlpPolicy", env, verbose=1)
-    model.learn(total_timesteps=1) # what does this do?
-
+    print('initalize')
+    #model = DQN.load('/home/emiwin/exjobb/beamline/ppo_model_1/ppo_model1',env=env)
+    model = PPO("MlpPolicy", env, n_steps=600, verbose=1)
+    model.learn(total_timesteps=600*20) # what does this do?
+    print('TRAINING DONE, testing now')
     obs = env.reset()
-    for i in range(5):
+    for i in range(300):
         action, _states = model.predict(obs, deterministic=True)
         obs, reward, done,info  = env.step(action)
-        env.render()
+        #env.render()
         if done:
             obs = env.reset()
+
+    model.save("ppo_model2")
 
     env.close()
 
