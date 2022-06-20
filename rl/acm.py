@@ -24,22 +24,61 @@ from scipy import optimize
 
 from vsb import VeritasSimpleBeamline
 
+
 # Environment class
 #
 class RaycingEnv():
-    # Raycing env
-    # state: (min fwhm and fwhm gap) 3 params
-    # actions: 2*5=10
+    """
+    ### RaycingEnv
+
+    ### Action Space
+    The action is a `ndarray` with shape `(5,)` representing the ways to shift the M4 mirror
+    | Num | Action   | Min  | Max |
+    |-----|----------|--------|-------|
+    | 0   | Pitch    | -0.003 | 0.003 |
+    | 1   | Yaw      | -0.001 | 0.001 |
+    | 2   | Roll     | -0.001 | 0.001 |
+    | 3   | Lateral  | -5.0   | 5.0   |
+    | 4   | Vertical | -2.5   | 2.5   |
+
+    ### Observation Space
+    The observation is a `ndarray` with shape `(3,)` representing the minumum full-width-half-maximas of the histograms of the x and y axis. And the gap
+    between the location of the minimas along the z axis.
+
+    | Num | Observation      | Min   | Max  |
+    |-----|------------------|-------|------|
+    | 0   | FWHMx            | 0.0   | 50.0 |
+    | 1   | FWHMy            | 0.0   | 50.0 |
+    | 2   | Gap              | -10.0 | 10.0 |
+
+    ### Rewards
+    The reward function is defined as:
+
+    if done:
+        r = 300
+    else:
+        r = -  FWHMx -  FWHMy - abs(Gap)
+
+
+    """
+    
     def __init__(self):
-        super().__init__()
+        super(RaycingEnv, self).__init__()
+        self.beamline = VeritasSimpleBeamline() # vsb object
+        rr.run_process = self.beamline.run_process
 
-        #self.beamline = beamline#VeritasSimpleBeamline()
-
-        self.params = [0.0,0.0,0.0,0.0,0.0] #pitch, yaw, roll, lat(x), vert(y)
-        self.steps = [1e-5, 1e-4, 1e-4, 0.1 ,0.1]
-        self.state = None
-        self.prev_state = None
+        self.bounds = np.array([self.beamline.p_lim, self.beamline.y_lim, self.beamline.r_lim, self.beamline.l_lim, self.beamline.v_lim])
+        
+        #self.action_space = spaces.Box(-self.bounds, self.bounds, dtype=np.float32)
+        #self.observation_space = spaces.Box(np.array([0.0, 0.0, -10.0]),
+        #                                    np.array([50.0, 50.0, 10.0]), dtype=np.float32)
+        self.steps=[1e-5, 2e-4, 2e-4, 0.1 ,0.1]
+        self.params=np.array([0.0,0.0,0.0,0.0,0.0])
         self.num_steps = 0
+        self.state = None
+        self.f_x = []
+        self.f_y = []
+
 
     def __calculate_fwhm(self,data,lim,N):
         x = np.linspace(lim[0], lim[-1], N)
@@ -67,34 +106,35 @@ class RaycingEnv():
         if a2 > 0:
             amin = -a1/(2*a2)
         else:
-            amin = x[np.argmin(poly(x, a0,a1,a2))]
+            amin = 1000.0
         
         return amin
 
-    def __reward_func(self,r):
-        return 1/(1+np.exp(-r+4))
+    def __calculate_vad(self,data,xlim):
 
-    def reset(self,beamline):
-        #self.beamline = VeritasSimpleBeamline()
+        ub = np.max(data)
+        lb = np.min(data)
+        mapk = 28/(ub-lb)
+        mapm = 14-mapk*ub
 
-        self.params=[0.0,0.0,0.0,0.0,0.0]
-        self.num_steps = 0
-        self.best_state = None
-        self.step(beamline) # take 0 action step
-        #print('reset.. state is:', self.state)
-        return self.state
+        rescaled = mapk*np.array(data)+mapm
 
-    def step(self,beamline):
-        # action = ??
-        # parameter: 0-pitch, 1-yaw, 2-roll, 3-lateral, 4-vertical
+        def dis_cont(x, a1,b1,a2,b2,c):
+            return np.where(x <= c, a1*x+b1, a2*x+b2)
+
+        [k1,m1,k2,m2,r],_ = optimize.curve_fit(dis_cont, xlim, rescaled)
         
-        #rr.run_process = self.beamline.run_process
-        #xrtr.run_ray_tracing(self.beamline.plots,repeats=self.beamline.repeats, 
-        #                         updateEvery=self.beamline.repeats, beamLine=self.beamline)
         
+
+        inc1 = np.arctan(k1)*180/np.pi
+        inc2 = np.arctan(k2)*180/np.pi
+        value = abs(inc1+inc2)
+        return value
+
+    def __get_observation(self):
         f_x = []
         f_y = []
-        for plot in beamline.plots:
+        for plot in self.beamline.plots:
             xt1D = np.append(plot.xaxis.total1D,0.0)
             xBins = plot.xaxis.binEdges
             yt1D = np.append(plot.yaxis.total1D,0.0)
@@ -109,38 +149,70 @@ class RaycingEnv():
             else:
                 f_y.append(self.__calculate_fwhm(yt1D,yBins,1000))
             
-        xmin = self.__calculate_argmin(f_x, beamline.scrTgt11.dqs, 1000)
-        ymin = self.__calculate_argmin(f_y, beamline.scrTgt11.dqs, 1000)
-        gap = abs(xmin-ymin)
+        xmin = self.__calculate_argmin(f_x, self.beamline.scrTgt11.dqs, 1000)
+        vad = self.__calculate_vad(f_y, self.beamline.scrTgt11.dqs)
+        ymin = self.beamline.scrTgt11.dqs[np.argmin(f_y)]
+        gap = (xmin-ymin)/1000.0
+        vad = vad/100.0 
         FWHMx = min(f_x)
         FWHMy = min(f_y)
-        if gap == 0.0:
-            gap = 1000.0
-        gap = gap/1000.0 # normalize
         
+        state =  np.array([FWHMx,FWHMy,gap,vad])
 
-        f_x = []
-        f_y = []
-        self.num_steps += 1
-        self.state =  [FWHMx,FWHMy,gap]
+        reward = -FWHMx - FWHMy - abs(np.clip(gap,-1.0,1.0)) - vad
 
-        if not self.prev_state is None:
-            imp = np.sum(self.prev_state) - np.sum(self.state)
-        else:
-            imp = 0.0
-       
-        reward = -np.sum(self.state)
-        reward = max(-10,reward)
-            
-        
         # Done?
         done = False
-        if gap < 1.5/1000.0 and FWHMx < 0.02 and FWHMy < 0.02:
+        if gap < 3.0/1000.0 and FWHMx < 0.01 and FWHMy < 0.005 and vad < 1.0/100.0:
             done = True
             reward = 300 # max possible steps is 290
-        if imp >= 0:
-            self.prev_state = self.state
-        return self.state, reward,imp, done
+        
+        return state, reward, done, f_x, f_y
+
+
+    def __take_action(self):
+        for plot in self.beamline.plots:
+                plot.xaxis.limits = None
+                plot.yaxis.limits = None
+                plot.xaxis.binEdges = np.zeros(self.beamline.bins + 1)
+                plot.xaxis.total1D = np.zeros(self.beamline.bins)
+                plot.yaxis.binEdges = np.zeros(self.beamline.bins + 1)
+                plot.yaxis.total1D = np.zeros(self.beamline.bins)
+
+        # change bealine params
+        action = np.clip(self.params, -self.bounds, self.bounds)
+        self.beamline.update_m4(action)
+
+        sys.stdout = open(os.devnull, 'w')
+        xrtr.run_ray_tracing(self.beamline.plots,repeats=self.beamline.repeats, 
+                    updateEvery=self.beamline.repeats, beamLine=self.beamline)#,threads=3,processes=8)
+        sys.stdout = sys.__stdout__
+
+    def reset(self):
+        #self.beamline = VeritasSimpleBeamline()
+        self.beamline.reset()
+        self.__take_action(np.zeros(5,dtype=np.float32))
+        
+        self.num_steps = 0
+        self.state,_,_,_,_ = self.__get_observation()  # calculate state
+        return self.state
+
+    def step(self, action):
+        
+        self.params[action[0]] += action[1]*self.steps[action[0]]
+        self.__take_action()
+
+        self.state, reward, done, self.f_x, self.f_y = self.__get_observation()
+        
+        self.num_steps += 1
+
+        return self.state,self.params, reward, done, {}
+
+    def render(self):
+        print('fwhm x: ', self.f_x)
+        print('fwhm y: ', self.f_y)
+        print('state: ', self.state)
+#
 
 
 def get_action(choice):
@@ -169,18 +241,11 @@ def train(beamline,env,model,num_actions):
     max_steps_per_episode = 700
     gamma = 0.99 # Discount factor for past rewards
     eps = np.finfo(np.float32).eps.item()  # Smallest number such that 1.0 + eps != 1.0
-    rr.run_process = beamline.run_process
+
+
     
     while True:  # Run until solved
-        # print('m4 params')
-        # print(beamline.M4.extraPitch)
-        # print(beamline.M4.extraYaw)
-        # print(beamline.M4.extraRoll)
-        # print(beamline.M4.center)
-        # print('---------------')
-        xrtr.run_ray_tracing(beamline.plots,repeats=beamline.repeats, 
-                            updateEvery=beamline.repeats, beamLine=beamline,threads=3,processes=8)
-        state = env.reset(beamline)
+        state  = env.reset()
         episode_reward = 0
         no_imp_cnt = 0
         with tf.GradientTape() as tape:
@@ -200,32 +265,14 @@ def train(beamline,env,model,num_actions):
                 choice = np.random.choice(num_actions, p=np.squeeze(action_probs))
                 action_probs_history.append(tf.math.log(action_probs[0, choice]))
                 action = get_action(choice)
+                state,action, reward, done, _ = env.step(action)
 
-                for plot in beamline.plots:
-                    plot.xaxis.limits = None
-                    plot.yaxis.limits = None
-
-                # Apply the sampled action in our environment
-                env.params[action[0]] += action[1]*env.steps[action[0]]
-                #print('in step, params: ', env.params)
-                beamline.update_m4(env.params)
-                
-                #Return to ray tracing
-                blockPrint()
-                xrtr.run_ray_tracing(beamline.plots,repeats=beamline.repeats, 
-                            updateEvery=beamline.repeats, beamLine=beamline,threads=3,processes=8)
-                enablePrint()
-                state, reward,imp, done = env.step(beamline)
-
-                #if imp < 0.0 and no_imp_cnt < 15:
-                #    #no improvement
-                #    env.params[action[0]] -= action[1]*env.steps[action[0]] #revert action
-                #    no_imp_cnt += 1
-                #else:
-                #    no_imp_cnt = 0
-
-                #print('state: ', state)
-                print('reward: ', reward, 'params: ', env.params)
+                print('reward: {0:.4f}, action: {1:.6f}, {2:.6f}, {3:.6f}, {4:.2f}, {5:.2f}'.format(reward,
+                                                                                                action[0],
+                                                                                                action[1],
+                                                                                                action[2],
+                                                                                                action[3],
+                                                                                                action[4]))
                 rewards_history.append(reward)
                 episode_reward += reward
 
@@ -300,11 +347,6 @@ def train(beamline,env,model,num_actions):
             return model
     
     
-    
-
-
-
-
 def main():
     beamline = VeritasSimpleBeamline(nrays=10000)
     env = RaycingEnv()

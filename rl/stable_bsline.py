@@ -1,3 +1,10 @@
+"""
+For running PPO with stable baselines
+
+Emil Winzell, April 2022
+"""
+
+
 import os
 import sys
 sys.stdout = open('stb_output.txt','wt')

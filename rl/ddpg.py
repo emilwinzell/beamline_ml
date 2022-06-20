@@ -1,8 +1,9 @@
-#
-#  RL model from: https://keras.io/examples/rl/ddpg_pendulum/
-# 
-# Deep Deterministic Policy Gradient
-# April 2022
+"""
+ RL model from: https://keras.io/examples/rl/ddpg_pendulum/
+
+Deep Deterministic Policy Gradient
+Emil Winzell, April 2022
+"""
 import os
 import sys
 sys.stdout = open('ddpg_output2.txt','wt')

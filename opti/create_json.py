@@ -1,10 +1,17 @@
+"""
+Create json file for running hypermapper
+"""
+
+
+
 import json
 
 scenario = {}
 scenario["application_name"] = "raycing"
-scenario["optimization_objectives"] = ["FWHM", "value"]#, "Gap"]
+scenario["optimization_objectives"] = ["FWHM", "t_dist"]#, "Gap"]
 
-scenario["optimization_iterations"] = 100
+scenario["optimization_iterations"] = 150
+scenario["normalize_inputs"]=True
 
 scenario["models"] = {}
 scenario["models"]["model"] = "gaussian_process"

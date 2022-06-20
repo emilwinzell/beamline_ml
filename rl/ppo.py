@@ -2,7 +2,7 @@
 #  RL model from: https://keras.io/examples/rl/ddpg_pendulum/
 # 
 # Proximal Policy Optimization
-# April 2022
+# Emil Winzell April 2022
 import os
 import sys
 #sys.stdout = open('ddpg_output.txt','wt')
@@ -282,6 +282,9 @@ class Buffer:
     def logprobabilities(self,logits, a):
         # Compute the log-probabilities of taking actions a by using the logits (i.e. the output of the actor)
         logprobabilities_all = tf.nn.log_softmax(logits)
+        #print(logprobabilities_all)
+        #print(a, self.num_actions)
+        #print( tf.one_hot(a, self.num_actions))
         logprobability = tf.reduce_sum(
             tf.one_hot(a, self.num_actions) * logprobabilities_all, axis=1
         )
@@ -345,8 +348,8 @@ def mlp(x, sizes, activation=tf.tanh, output_activation=None):
 
 def train(env, model_dir, num_states, num_actions):
     # Hyperparameters of the PPO algorithm
-    steps_per_epoch = 5#4000
-    epochs = 2#30
+    steps_per_epoch = 8#4000
+    epochs = 5#30
     gamma = 0.99
     clip_ratio = 0.2
     policy_learning_rate = 3e-4
@@ -378,7 +381,7 @@ def train(env, model_dir, num_states, num_actions):
     value_optimizer = keras.optimizers.Adam(learning_rate=value_function_learning_rate)
 
     # Initialize the observation, episode return and episode length
-    observation, episode_return, episode_length = env.reset(), 0, 0
+    episode_return, episode_length =  0, 0
 
     # Initialize the buffer
     buffer = Buffer( [actor, critic], [policy_optimizer, value_optimizer], num_states, num_actions, steps_per_epoch, [gamma, lam, clip_ratio])
@@ -389,7 +392,7 @@ def train(env, model_dir, num_states, num_actions):
         sum_return = 0
         sum_length = 0
         num_episodes = 0
-
+        observation  = env.reset()
         # Iterate over the steps of each epoch
         for t in range(steps_per_epoch):
             if render:
@@ -439,6 +442,7 @@ def train(env, model_dir, num_states, num_actions):
             logprobability_buffer,
         ) = buffer.get()
 
+        print(action_buffer)
         # Update the policy and implement early stopping using KL divergence
         for _ in range(train_policy_iterations):
             kl = buffer.train_policy()

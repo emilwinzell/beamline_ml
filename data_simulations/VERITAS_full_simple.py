@@ -23,7 +23,7 @@ M4elliptic='yes' #'yes'
 model='VERITAS_M4_fishtails_t'+datetime. now(). strftime("%Y_%m_%d-%I-%M-%S_%p") #this is just to hold plots in save and stop overwrite
 
 
-numrays = 60000
+numrays = 10000
 
 #####ENERGY
 
@@ -39,10 +39,12 @@ slitsizeY_default=0.05 #mm ES vertical
 
 
 
-
-M4yaw=0. #in radians, directly adds yaw to M4
-M4roll=0.
-M4pitch=0.0
+#-6.85553077e-04,  1.09588839e-04,  1.91748061e-03, -1.06451612e+00,-9.34061316e-02
+M4pitch=0#2.82404352e-04 #in radians, directly adds yaw to M4
+M4yaw=0#1.82926549e-04
+M4roll=0#1.67707426e-03
+M4lat =0# 3.26236547e-01
+M4vert =0# -1.15008439e-01
 focus_position=0#adds extra distance onto focus position directly from nominal
 lims=5#1/2 size of plot at target screen
 
@@ -360,12 +362,6 @@ def build_beamLine(nrays=raycing.nrays):
 
     print ('M1: ', beamLine.M1.center, np.degrees(beamLine.M1.pitch))
 
-    
-
-
-    
-
-
     (pitchPG, pitchM2) = calculate_cPGM(cff, m, E, d)
 
     distBDAM2 = distBDAPG-exitheight/np.tan(2*pitchM2)
@@ -393,10 +389,8 @@ def build_beamLine(nrays=raycing.nrays):
 
     beamLine.scrPG = rscr.Screen(beamLine, name='screenPG', center=beamLine.PG.center)
 
-
 #M3
 
-    
     print (branch)
     beamLine.M3 = ToroidMirrorSE(beamLine, 'M3',  r=m3r_b, R=m3R_b,
                                         center=[beamLine.PG.center[0]-distPGM3*np.sin(2*beamLine.M1.pitch),
@@ -409,17 +403,10 @@ def build_beamLine(nrays=raycing.nrays):
     beamLine.M3.Y2=delta_Y2 #yaw scan
     print ('M3 center: ', beamLine.M3.center,'angle: ', np.degrees(beamLine.M3.pitch))
 
-
-   
-
-
     tmppitchM3 = pitchM3APXPS*np.pi/180
     beamLine.scrM3 = rscr.Screen(beamLine, name='screenM3', center=beamLine.M3.center)
     print ('M3 pitch', np.degrees(tmppitchM3))
     #print('np.degrees(2*beamLine.M1.pitch+2*tmppitchM3): ', np.degrees(2*beamLine.M1.pitch+2*tmppitchM3))
-
-
-
 
 
 
@@ -439,12 +426,6 @@ def build_beamLine(nrays=raycing.nrays):
 
     beamLine.scrSL = rscr.Screen(beamLine, name='screenSL', center=beamLine.SL.center)
     
-
-
-
-
-
-
 
 #M4 elliptic
 
@@ -482,7 +463,9 @@ def build_beamLine(nrays=raycing.nrays):
     beamLine.scrTgt11 = rscr.Screen(beamLine, name='screenTgt-0', center=[beamLine.M4.center[0]-(distM4TgtAPXPS+displF)*np.sin(2*(beamLine.M1.pitch + tmppitchM3+ tmppitchM4)),
                                                                     beamLine.M4.center[1]+(distM4TgtAPXPS+displF)*np.cos(2*(beamLine.M1.pitch + tmppitchM3+ tmppitchM4)),
                                                                     beamLine.M4.center[2]])
-
+    beamLine.scrTgt11.dqs = np.linspace(-14, 14, 9)
+    global tgtCenter
+    tgtCenter = beamLine.M4.center[1]+(distM4TgtAPXPS+displF)*np.cos(2*(beamLine.M1.pitch + tmppitchM3+ tmppitchM4))
 
     print ('Tgt11, target 11 center: ', beamLine.scrTgt11.center)
 
@@ -498,7 +481,7 @@ def build_beamLine(nrays=raycing.nrays):
     print ('sample axis, mag',axis,magaxis)
 
     beamLine.scrSample = rscr.Screen(beamLine, name='screenSample', center=beamLine.scrTgt11.center,x=[axis[0],axis[1],axis[2]],z=[0,0,1])
-
+    beamLine.M4.center = [beamLine.M4.center[0]+M4lat,beamLine.M4.center[1],beamLine.M4.center[2]+M4vert]
     return beamLine
 
 def run_process(beamLine, shineOnly1stSource=False):
@@ -522,13 +505,18 @@ def run_process(beamLine, shineOnly1stSource=False):
     beamTgtScr11 = beamLine.scrTgt11.expose(beamM4g)
 
     beamSampleScr = beamLine.scrSample.expose(beamM4g)
+    outDict = {'beamSource': beamSource, 'beamM4Scr': beamM4Scr}
 
+    for i, dq in enumerate(beamLine.scrTgt11.dqs):
+       beamLine.scrTgt11.center[1] = tgtCenter + dq
+       outDict['beamscrTgt_{0:02d}'.format(i)] = beamLine.scrTgt11.expose(beamM4g)
 
-    outDict = {'beamSource': beamSource, 'beamBDAScr': beamBDAScr,'beamM1g': beamM1g, 'beamM1Scr': beamM1Scr,
-               'beamM2g': beamM2g, 'beamM2Scr': beamM2Scr, 'beamPGScr':beamPGScr,
-               'beamM3Scr': beamM3Scr, 'beamSLDispScr': beamSLDispScr, 'beamSLScr': beamSLScr, 'beamM4Scr': beamM4Scr,
-               'beamTgtScr11': beamTgtScr11,
-               'beamSampleScr': beamSampleScr}
+    #outDict = {'beamSource': beamSource, 'beamBDAScr': beamBDAScr,'beamM1g': beamM1g, 'beamM1Scr': beamM1Scr,
+    #           'beamM2g': beamM2g, 'beamM2Scr': beamM2Scr, 'beamPGScr':beamPGScr,
+    #           'beamM3Scr': beamM3Scr, 'beamSLDispScr': beamSLDispScr, 'beamSLScr': beamSLScr, 'beamM4Scr': beamM4Scr,
+    #           'beamTgtScr11': beamTgtScr11,
+    #           'beamSampleScr': beamSampleScr}
+
     return outDict
 
 
@@ -540,43 +528,54 @@ def define_plots(beamLine):
     plots = []
 
     
-    plot = xrtp.XYCPlot('beamSource')
-    plot.xaxis.fwhmFormatStr = '%.4f'
-    plot.yaxis.fwhmFormatStr = '%.4f'
-    plots.append(plot)
+    # plot = xrtp.XYCPlot('beamSource')
+    # plot.xaxis.fwhmFormatStr = '%.4f'
+    # plot.yaxis.fwhmFormatStr = '%.4f'
+    # plots.append(plot)
     
-    plotsSL = []
+    # plotsSL = []
 
     
-    plot = xrtp.XYCPlot('beamBDAScr')
-    plot.xaxis.fwhmFormatStr = '%.4f'
-    plot.yaxis.fwhmFormatStr = '%.4f'
-    plots.append(plot)
+    # plot = xrtp.XYCPlot('beamBDAScr')
+    # plot.xaxis.fwhmFormatStr = '%.4f'
+    # plot.yaxis.fwhmFormatStr = '%.4f'
+    # plots.append(plot)
     
     
-    plotsSL=[]
+    # plotsSL=[]
     
     
     
 
     
-    plot = xrtp.XYCPlot('beamSampleScr')
-    plot.xaxis.fwhmFormatStr = '%.4f'
-    plot.yaxis.fwhmFormatStr = '%.4f'
-    plots.append(plot)
+    # plot = xrtp.XYCPlot('beamSampleScr')
+    # plot.xaxis.fwhmFormatStr = '%.4f'
+    # plot.yaxis.fwhmFormatStr = '%.4f'
+    # plots.append(plot)
+    
+    
+    # plotsSL=[]
+    
+    
+    
+    # plot = xrtp.XYCPlot('beamTgtScr11')
+    # plot.xaxis.fwhmFormatStr = '%.4f'
+    # plot.yaxis.fwhmFormatStr = '%.4f'
+    # plots.append(plot)
     
     
     plotsSL=[]
-    
-    
-    
-    plot = xrtp.XYCPlot('beamTgtScr11')
-    plot.xaxis.fwhmFormatStr = '%.4f'
-    plot.yaxis.fwhmFormatStr = '%.4f'
-    plots.append(plot)
-    
-    
-    plotsSL=[]
+    bins=123
+    limit=2
+    for i, dq in enumerate(beamLine.scrTgt11.dqs):
+        plot = xrtp.XYCPlot('beamscrTgt_{0:02d}'.format(i),
+                                xaxis=xrtp.XYCAxis('$x$', 'mm',limits=None,bins=bins, ppb=2),
+                                yaxis=xrtp.XYCAxis( '$z$', 'mm',limits=None,bins=bins, ppb=2))
+
+        plot.xaxis.fwhmFormatStr = '%.4f'
+        plot.yaxis.fwhmFormatStr = '%.4f'
+        plots.append(plot)
+
     
     
     
@@ -599,7 +598,9 @@ def main():
     beamLine = build_beamLine(nrays=numrays)
     plots, plotsSL = define_plots(beamLine)
     #xrtr.run_ray_tracing(plots, generator=plot_generator, generatorArgs=[plots,plotsSL, beamLine],repeats=1,updateEvery=1,beamLine=beamLine)
-    xrtr.run_ray_tracing(plots,repeats=1,updateEvery=1,beamLine=beamLine)
+    xrtr.run_ray_tracing(plots,repeats=10,updateEvery=10,beamLine=beamLine)
+    for plot in plots:
+        print(plot.cx,plot.cy, np.sqrt(np.square(plot.cx)+np.square(plot.cy)))
 
 
 if __name__ == '__main__':

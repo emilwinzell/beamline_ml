@@ -1,0 +1,172 @@
+value= fwhm + clipped gap
+performs very well except for lateral and roll
+Best point found:
+pitch,yaw,roll,lateral,vertical,value
+0.0024544438606606753,-0.0008272836486267151,-0.0009880469088794166,1.5,-2.314504926642509,0.012030774543512571
+
+End of HyperMapper
+original:  [-0.0025155657368399844, 0.0008708053627491201, -0.00019556129110422213, -0.4625504039869537, 2.3454093881232554]
+The job is running... 
+The ray tracing with 10 iterations took 6.8 s
+finished
+best possible value:   0.013315300410250733
+DONE :)
+
+difference: [-6.11218762e-05,  4.35217141e-05, -1.18360820e-03,  1.03744960e+00, 3.09044615e-02]
+
+It seems that the lateral translation really doesnt do much...
+
+value = fwhm + gap + t_dist
+
+End of Bayesian Optimization
+Best point found:
+pitch,yaw,roll,lateral,vertical,value
+0.0022082556651203244,0.001,-0.0005993798988165427,1.278070641625714,0.631654205492929,0.23867267610321694
+
+End of HyperMapper
+original:  [-0.0011174592163142377, 0.0004663703931010424, -0.0004737200568637397, 0.30008080724103436, -0.48175848516039554]
+The job is running...
+The ray tracing with 10 iterations took 5.8 s
+finished
+best possible value:   0.012745360969752005
+difference: [0.00103366, 0.00146637, -0.00646742, 1.578, -0.24308]
+DONE :)
+
+Did 150 iterations instead:-----------------------------------------------------------------------------------
+End of Bayesian Optimization
+Best point found:
+pitch,yaw,roll,lateral,vertical,value
+-0.0012223559639717712,-0.00016359156107647157,-0.0009998640872406121,0.5109993114035793,1.7354769635264482,0.06460988903821667
+
+End of HyperMapper
+original:  [0.0010801186269617383, 0.00015747948748859146, 0.0007918702124838754, -0.7682360869749552, -1.7121439354832346]
+The job is running... 
+The ray tracing with 10 iterations took 5.3 s
+finished
+best possible value:   0.012710978518741946
+difference: [-1.42237337e-04, -6.11207359e-06, -2.07993875e-04, -2.57236776e-01,2.33330280e-02]
+from best value: -0.051898910500000006
+DONE :)
+
+
+Trying it again:
+End of Bayesian Optimization
+Best point found:
+pitch,yaw,roll,lateral,vertical,value
+-0.0029676852143355613,0.0001815979636568838,0.001,-0.3991435829848784,-1.4986209714613203,0.17346479756974587
+
+End of HyperMapper
+original:  [0.0026702922231152714, -9.32274005505054e-05, 0.00030799623004757175, 0.09539050437159258, 1.4623906908951332]
+The job is running... 
+The ray tracing with 10 iterations took 6.0 s
+finished
+best possible value:   0.01247433340014788
+difference: [-2.97392991e-04,  8.83705631e-05,  1.30799623e-03, -3.03753079e-01,-3.62302806e-02]
+from best value: -0.16099046416974586
+DONE :)
+
+and again:
+End of Bayesian Optimization
+Best point found:
+pitch,yaw,roll,lateral,vertical,value
+-0.0006370172093038036,0.001,0.001,0.7362799897864374,1.601157111828016,0.1364142478263855
+
+End of HyperMapper
+original:  [0.0009194215614018062, -0.000817073451001632, 0.0006770742595852272, -0.41004344245472235, -1.7161655507746065]
+The job is running... 
+The ray tracing with 10 iterations took 7.8 s
+finished
+best possible value:   0.012460751671388938
+difference: [ 2.82404352e-04,  1.82926549e-04,  1.67707426e-03,  3.26236547e-01,-1.15008439e-01]
+from best: -0.1239396 (900%)
+DONE :)
+
+With upscaled fwhm:
+
+End of Bayesian Optimization
+Best point found:
+pitch,yaw,roll,lateral,vertical,value
+-0.0006428671661936193,3.6691350971030604e-05,-0.00029455982993851733,0.7783303248420381,1.3915782501963543,1.6507073082056605
+
+End of HyperMapper
+original:  [0.0008010696858018846, 3.582691243105419e-05, -0.0005329650824081733, -0.6721558105738257, -1.3471881743803942]
+The job is running...
+The ray tracing with 10 iterations took 5.6 s
+finished
+best possible value:   1.4202771010363195
+difference: ([ 1.58202520e-04,  7.25182634e-05, -8.27524912e-04,  1.06174514e-01,4.43900758e-02]
+from best: -0.23952020799999985 (17%)
+DONE :)
+
+new scaling:
+End of Bayesian Optimization
+Best point found:
+pitch,yaw,roll,lateral,vertical,value
+-0.0013592080365706655,0.001,-0.0009920740654909826,-0.34317597865393723,-0.12997976055237936,0.20454972978252303
+
+End of HyperMapper
+original:  [0.0015689986000539642, -0.0009863926877342725, -0.0001902257316266356, 0.7184892083782062, 0.1905663699318021]
+The job is running...
+The ray tracing with 10 iterations took 14.1 s
+finished
+best possible value:   0.12627484279781764
+difference: [ 2.09790563e-04,  1.36073123e-05, -1.18229980e-03,  3.75313230e-01, 6.05866094e-02]
+from best: -0.078275000 (62%)
+
+End of Bayesian Optimization
+Best point found:
+pitch,yaw,roll,lateral,vertical,value
+-0.001483169153307033,-5.2004494188701705e-05,0.001,-0.026215181822205613,-1.376158697391351,0.18002975161808416
+
+End of HyperMapper
+original:  [0.0013082137043000314, 3.3116148797637975e-05, -1.5154566548213153e-05, -0.17083984237412353, 1.5175449159252068]
+The job is running...
+The ray tracing with 10 iterations took 6.6 s
+finished
+best possible value:   0.12309047606920788
+difference: [[-1.74955449e-04, -1.88883454e-05,  9.84845433e-04, -1.97055024e-01, 1.41386219e-01]]
+from best: -0.0569 (46%)
+
+250 iter:
+End of Bayesian Optimization
+Best point found:
+pitch,yaw,roll,lateral,vertical,value
+-0.00030587178283328657,-0.0004123713991177787,0.001,-0.15977955890590612,-2.392081171659737,0.15030277686467713
+
+End of HyperMapper
+original:  [3.389279617302312e-05, 0.0003799346008587616, 0.0008054392018537009, -0.22415777882478682, 2.327364964776587]
+The job is running... 
+The ray tracing with 10 iterations took 7.6 s
+finished
+best possible value:   0.12339251925832734
+difference: [-2.71978987e-04, -3.24367983e-05,  1.80543920e-03, -3.83937338e-01, -6.47162069e-02]
+from best: -0.0269 (21%)
+
+with ymin xmin 150 iter
+End of Bayesian Optimization
+Best point found:
+pitch,yaw,roll,lateral,vertical,value
+0.00214682540099139,-0.00012141236436221791,0.0006744156141885978,-0.6100465843473234,0.5834229945788345,0.4393911784497293
+
+End of HyperMapper
+original:  [-0.0020672147693006253, 0.0001429466052766178, -0.0003253829447584382, -0.3235432054250633, -1.3610873506637389]
+The job is running...
+The ray tracing with 10 iterations took 6.4 s
+finished
+best possible value:   0.1900303393095207
+difference: []
+DONE :)
+
+with 400 iter
+Best point found:
+pitch,yaw,roll,lateral,vertical,value
+0.0006398680429256466,0.0004520562225445305,0.001,-1.490316321669361,0.30783572727343733,0.15768750683786445
+
+End of HyperMapper
+original:  [-0.0010893164571267712, -0.00045152344472100547, -0.0008343265915114144, 0.9521640306660961, -0.311259598218367]        
+The job is running...
+The ray tracing with 10 iterations took 6.9 s
+finished
+best possible value:   0.12650874176360438
+difference: [-4.49448414e-04,  5.32777824e-07,  1.65673408e-04, -5.38152291e-01,-3.42387094e-03]
+DONE :)

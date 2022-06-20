@@ -1,8 +1,19 @@
 """
-GENERATE DATA VERSION 2
+GENERATE DATA VERSION 2 
+This program was used for generating all data for the project (VAEs)
 Using new, updated version of VERITAS beamline.
 Random parameters, large number of rays.
 Should be run on multiple cores.
+
+ex:
+python .\data_simulations\generate_data_2.py -p 'C:\Users\emiwin\exjobb' 
+will create new timestamp folder at specified location for saving the data
+
+python .\data_simulations\generate_data_2.py -t 'C:\Users\emiwin\exjobb\05120912'
+will continue on the specified dataset
+
+generated datasets for project can be found at:
+https://sharepoint.lu.se/sites/maxiv_science/_layouts/15/start.aspx#/BLG/Forms/AllItems.aspx?RootFolder=%2fsites%2fmaxiv%5fscience%2fBLG%2fBeamline%20Office%2fX%2dRay%20Optics%2fSimulation%2fdata%20from%20ML%20masters%20VERITAS&FolderCTID=0x0120007A52791F2B3C2547AA26E2D6F191CE9D&InitialTabId=Ribbon%2ERead&VisibilityContext=WSSTabPersistence
 
 Emil Winzell
 March 2022
@@ -40,7 +51,7 @@ M4elliptic='yes' #'yes'
 model='VERITAS_M4_fishtails_t'+datetime. now(). strftime("%Y_%m_%d-%I-%M-%S_%p") #this is just to hold plots in save and stop overwrite
 
 
-numrays = 100000
+numrays = 130000
 
 #####ENERGY
 E=400 #1612 max for harmonic 1
@@ -427,7 +438,8 @@ def _stack_size2a(size=2):
         if not frame:
             return size
 
-
+# GENERATOR SCRIPT
+#USING PRE-DEFINED LIST OF PARAMETER VALUES FOR THE MIRROR
 def data_generator(num_samples,plots,beamLine,name,save_path,xml_root):
     img_path = os.path.join(save_path,'images')
     hist_path = os.path.join(save_path,'histograms')
@@ -442,7 +454,7 @@ def data_generator(num_samples,plots,beamLine,name,save_path,xml_root):
     pitch_lim = 0.003
     yaw_lim = 0.001
     roll_lim = 0.001
-    lat_lim = 5.0
+    lat_lim = 1.5
     vert_lim = 2.5
 
     pitches = np.linspace(-pitch_lim,pitch_lim,num_samples)
@@ -523,6 +535,8 @@ def data_generator(num_samples,plots,beamLine,name,save_path,xml_root):
             sample_count += 1
 
 
+# GENERATOR SCRIPT (recomended!)
+# using random offsets in the specified limits
 def data_rand_generator(num_samples,bins,plots,beamLine,name,save_path,xml_root):
     img_path = os.path.join(save_path,'images')
     hist_path = os.path.join(save_path,'histograms')
@@ -533,19 +547,19 @@ def data_rand_generator(num_samples,bins,plots,beamLine,name,save_path,xml_root)
     else:
         start =  0
 
-    # Define param limits, all in radians
-    pitch_lim = 0.001
-    yaw_lim = 0.02
-    roll_lim = 0.02
-    #lat_lim = 1.5
-    #ver_lim = 2.5
+    # Define param limits, in radians and mm
+    pitch_lim = 0.003
+    yaw_lim = 0.001
+    roll_lim = 0.001
+    lat_lim = 1.5
+    ver_lim = 2.5
     # pick one random setting:
     for i in range(num_samples):
         pitch = np.random.uniform(-pitch_lim,pitch_lim)
         yaw = np.random.uniform(-yaw_lim,yaw_lim)
         roll = np.random.uniform(-roll_lim,roll_lim)
-        exX = 0.8*np.random.randn()
-        exZ = np.random.randn()
+        exX = np.random.uniform(-lat_lim,lat_lim)#0.8*np.random.randn()
+        exZ = np.random.uniform(-ver_lim,ver_lim)#np.random.randn()
 
         if _stack_size2a(i) > sys.getrecursionlimit()-200:
             print('Getting close to recursion limit, ending')
@@ -575,20 +589,6 @@ def data_rand_generator(num_samples,bins,plots,beamLine,name,save_path,xml_root)
                 t2D = t2D*65535.0/t2D.max()
             t2D = np.uint16(cv.flip(t2D,0))
             t2D = cv.cvtColor(t2D,cv.COLOR_RGB2GRAY)
-
-            pad_x = int((bins*2.0/plot.dx-bins)/2)
-            pad_y = int((bins*2.0/plot.dy-bins)/2)
-            if pad_x > 0 :
-                xt2D = cv.copyMakeBorder(t2D,0,0,pad_x,pad_x,borderType=cv.BORDER_CONSTANT)
-            else:
-                xt2D = t2D[abs(pad_x):bins-abs(pad_x),:]
-            
-            if pad_y > 0:
-                yt2D = cv.copyMakeBorder(xt2D,pad_y,pad_y,0,0,borderType=cv.BORDER_CONSTANT)
-            else:
-                yt2D = xt2D[:,abs(pad_y):bins-abs(pad_y)]
-
-            t2D = cv.resize(yt2D,(bins,bins))
 
             cv.imwrite(os.path.join(img_path,save_name),t2D)
             imgnr += 1
@@ -662,7 +662,7 @@ def main():
 
     bins = 256
     xz_lim = 2
-    num_samples = 5
+    num_samples = 500
     plots, plotsSL = define_plots(beamLine,bins,xz_lim)
 
     if args.timestp is None:
@@ -696,7 +696,7 @@ def main():
 
     xrtr.run_ray_tracing(
         plots,repeats=repeats, updateEvery=repeats, beamLine=beamLine,
-        generator=data_rand_generator, generatorArgs=(num_samples,bins,plots,beamLine,timestp,path,root),
+        generator=data_rand_generator, generatorArgs=(num_samples,plots,beamLine,timestp,path,root),
         afterScript=write_xml, afterScriptArgs=(path,root,))#, threads=1,processes=4)
     
     print('\n DONE')

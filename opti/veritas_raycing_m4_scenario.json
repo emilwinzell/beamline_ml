@@ -3,7 +3,8 @@
     "optimization_objectives": [
         "value"
     ],
-    "optimization_iterations": 100,
+    "optimization_iterations": 400,
+    "normalize_inputs": true,
     "models": {
         "model": "gaussian_process"
     },

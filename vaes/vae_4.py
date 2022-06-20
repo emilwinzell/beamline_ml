@@ -388,9 +388,9 @@ def main():
     list_of_imgs = glob.glob(os.path.join(images,'*.png'))
     
 
-    if len(list_of_imgs)%9 != 0 or len(list_of_imgs) == 0:
-        print('DATA ERROR, wrong length, ending...')
-        return
+    #if len(list_of_imgs)%9 != 0 or len(list_of_imgs) == 0:
+    #    print('DATA ERROR, wrong length, ending...')
+    #    return
 
     num_samples = len(list_of_imgs)//9
     num_train = int(num_samples*0.8) # 80% to train
@@ -430,7 +430,7 @@ def main():
     batch_size = 10
     my_training_batch_generator = My_Generator(x_train, y_train, batch_size)
     my_validation_batch_generator = My_Generator(x_test, y_test, batch_size)
-
+    pasddsgasdf
 
     if train:
         while not created_dir:

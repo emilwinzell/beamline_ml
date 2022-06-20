@@ -1,3 +1,9 @@
+"""
+Help for calculating the dimensions of the decoder to get back to the same size as the input
+
+Emil Winzell, April 2022
+"""
+
 
 
 def calc_dims(shape, strides, k_size,padding,output_padding):

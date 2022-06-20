@@ -1,13 +1,13 @@
-# evaluate 2d vae
-#
-# Trying differnet implementation
-# from: https://keras.io/examples/generative/vae/?msclkid=0a8e33e0a5ff11ecab29a7e68ba38092
-#
-# Adding second model for scaling distances.
-# file:///C:/Users/emiwin/Downloads/Variational_Autoencoders_for_Cancer_Data_Integrati.pdf
-#
+"""
+Program to evaluate the VAE on the test set, calculate results and present in plots
+
+Emil Winzell, May 2022
+
+"""
+
+
 import sys
-sys.stdout = open('output.txt','wt')
+#sys.stdout = open('output.txt','wt')
 import os
 import cv2 as cv
 import numpy as np
@@ -17,12 +17,10 @@ from tensorflow import keras
 import glob
 import random
 from scipy import optimize
+from matplotlib import pyplot as plt
 
-import logging
-logging.basicConfig(filename='./simple_vae_4.log', level=logging.DEBUG)
-logger=logging.getLogger(__name__)
 
-from simple_vae_4 import My_Generator, VAE
+from vae2D_4 import My_Generator, VAE, Sampling
 
 
 
@@ -30,7 +28,8 @@ def build_encoder(width=256,height=256,latent_space_dim=10):
     print('ENCODER')
     encoder_input = keras.layers.Input(shape=(width,height,1), name='encoder_input')
     ex_input = keras.layers.Input(shape=(4,), name='extra_input')
-    y = keras.layers.Dense(4,activation='relu')(ex_input)
+    y = keras.layers.Dense(16,activation='relu')(ex_input)
+    y = keras.layers.Dense(8,activation='relu')(y)
 
     x = keras.layers.Conv2D(filters=8, kernel_size=(3,3), strides=1, name='encoder_conv_1')(encoder_input)
     x = keras.layers.BatchNormalization(name='encoder_norm_1')(x)
@@ -117,7 +116,7 @@ def build_decoder(shape,latent_space_dim=5):
     x = keras.layers.LeakyReLU(name="decoder_output")(x)
     print(x.shape)
 
-    y = keras.layers.Dense(4,name="decoder_dense_ex_1")(decoder_input)
+    y = keras.layers.Dense(16,name="decoder_dense_ex_1")(decoder_input)
     y = keras.layers.Dense(4,name="decoder_dense_ex_2")(y)
     print(y.shape)
 
@@ -139,7 +138,7 @@ def calculate_fwhm(data,bins):
         return fwhm
 
 
-def evaluate(img,scale):
+def evaluate(img,scale,plot=False):
     x1D = np.sum(img, axis=0)
     y1D = np.sum(img, axis=1)
     cx,dx,cy,dy = scale
@@ -148,10 +147,63 @@ def evaluate(img,scale):
     xbins = np.linspace(cx-dx/2,cx+dx/2,len(x1D))
     ybins = np.linspace(cy-dy/2,cy+dy/2,len(y1D))
 
+    # PLOT HISTOGRAMS WITH TRUE AND RECONSTRUCTED IMAGES
+    # if plot == False:
+    #     plt.figure()
+    # sub1 = plt.subplot(121)
+    # plt.plot(xbins,x1D)
+    # sub1.set_title('x-axis')
+    # sub1.set_ylabel('Counts')
+    # sub1.set_xlabel('Bins')
+    # #plt.plot(x,g_xt)
+    # sub2 = plt.subplot(122)
+    # plt.plot(ybins,y1D)
+    # sub2.set_title('y-axis')
+    # sub2.set_xlabel('Bins')
+    # if plot == True:
+    #     sub2.margins(x=0.05, y=0.15)
+    #     plt.legend(['True (encoder input)','Predicted (decoder output)'], loc='upper left')
+    #     plt.show()
+
     fwhmX = calculate_fwhm(x1D,xbins)
     fwhmY = calculate_fwhm(y1D,ybins)
     return fwhmX, fwhmY
 
+
+def plot_latent_space(vae, n=30, figsize=15):
+    # display a n*n 2D manifold of digits
+    digit_size = 256
+    scale = 1.0
+    figure = np.zeros((digit_size * n, digit_size * n))
+    # linearly spaced coordinates corresponding to the 2D plot
+    # of digit classes in the latent space
+    grid_x = np.linspace(-scale, scale, n)
+    grid_y = np.linspace(-scale, scale, n)[::-1]
+
+    for i, yi in enumerate(grid_y):
+        for j, xi in enumerate(grid_x):
+            z_sample = np.array([np.append([xi,yi],np.random.uniform(0,1,8))])
+            z_sample = np.array([np.append([xi,yi],np.zeros(8))])
+            x_decoded = vae.decoder.predict(z_sample)
+            digit = x_decoded[0].reshape(digit_size, digit_size)
+            print('i: {},j: {}, scale={}'.format(i,j,x_decoded[1]))
+            figure[
+                i * digit_size : (i + 1) * digit_size,
+                j * digit_size : (j + 1) * digit_size,
+            ] = digit
+
+    plt.figure(figsize=(figsize, figsize))
+    start_range = digit_size // 2
+    end_range = n * digit_size + start_range
+    pixel_range = np.arange(start_range, end_range, digit_size)
+    sample_range_x = np.round(grid_x, 1)
+    sample_range_y = np.round(grid_y, 1)
+    plt.xticks(pixel_range, sample_range_x)
+    plt.yticks(pixel_range, sample_range_y)
+    plt.xlabel("z[0]")
+    plt.ylabel("z[1]")
+    plt.imshow(figure, cmap="Greys_r")
+    plt.show()
 
 def main():
     parser = argparse.ArgumentParser()
@@ -159,6 +211,7 @@ def main():
     parser.add_argument("-t", "--timestp", default='/home/emiwin/exjobb/', help="path to timestamp folder")
     args = parser.parse_args()
 
+    # BUILD MODEL AS IT WAS TRAINED
     latent_space_dim = 10
     img_size = (256,256)
     encoder, shape = build_encoder(width=img_size[0],height=img_size[1],latent_space_dim=latent_space_dim)
@@ -167,7 +220,7 @@ def main():
     decoder = build_decoder(shape,latent_space_dim=latent_space_dim)
     decoder.summary()
 
-    histograms = os.path.join(args.base,'histograms')
+    histograms = os.path.join(args.timestp,'histograms')
     images = os.path.join(args.timestp,'images')
     xml = os.path.join(args.timestp,'data.xml')
     tree = ET.parse(xml)
@@ -176,11 +229,11 @@ def main():
     test_imgs = glob.glob(os.path.join(images,'*.png'))
     num_samples = len(test_imgs)
     
-    random.shuffle(test_imgs)
+    #random.shuffle(test_imgs)
     print('loaded {} samples'.format(num_samples))
     
-    
-    encoder.load_weights(os.path.join(args.model,'encoder_weights.h5'))
+    # LOAD THE WEIGHTS OF THE MODEL TO BE EVALUATED
+    encoder.load_weights(os.path.join(args.model,'encoder_weights.h5')) 
     decoder.load_weights(os.path.join(args.model,'decoder_weights.h5'))
 
     vae = VAE(encoder, decoder)
@@ -190,6 +243,19 @@ def main():
     batch_size = num_samples//5
     my_test_batch_generator = My_Generator(test_imgs, root, batch_size)
     
+    # FOR SAVING THE RECONSTRUCTED IMAGES
+    # dec_imgs = os.path.join(args.timestp,'decoded_images')
+    # try:
+    #     os.mkdir(dec_imgs)
+    # except OSError as e:
+    #     print('decoded exists!')
+
+    # PLOT VISUAL OF THE LATENT SPACE
+    #plot_latent_space(vae,n=10)
+    samp_nr = 0
+    X = []
+    Y = []
+    small_sc = []
     for i in range(num_samples//batch_size):
         x_test = my_test_batch_generator.__getitem__(i)
         
@@ -201,14 +267,64 @@ def main():
         
         xdiff=[]
         ydiff=[]
+        scaling = []
+        
+        sys.stdout = sys.__stdout__
         for i_img,i_sc,o_img,o_sc in zip(input_imgs,input_scales,output_imgs,output_scales):
-            tx,ty = evaluate(i_img,i_sc)
-            px,py = evaluate(o_img,o_sc)
+            tx,ty = evaluate(i_img,i_sc) # get true FWHM values
+            o_img = np.squeeze(o_img)
+            o_img[o_img < 0] = 0
+            img1 = o_img*255
+            img1 = img1.astype(np.uint8)
+            #img1 = cv.blur(img1, (20,20))
+            img2 = i_img*255
+            img2 = img2.astype(np.uint8)
 
-            xdiff.append(abs(tx-px))
-            ydiff.append(abs(ty-py))
+            # SAVING THE RECONSTRUCTED IMAGES
+            #save_name = os.path.join(dec_imgs,'dec_{}.png'.format(samp_nr))
+            #cv.imwrite(save_name,img1)
+            samp_nr += 1
 
+            px,py = evaluate(o_img,o_sc,True) # get reconstructed FWHM values
+            sc_err = abs(np.array(o_sc)-np.array(i_sc))
+            if i_sc[1] < 0.01:
+                small_sc.append(sc_err)
+            
+            # COMPENSATION FOR STATIONARY ERROR (see report)
+            #px = px - 0.3527/(1+0.3527)*px
+            #py = py -  1.015/(1+1.015)*py
+
+            xdiff.append(abs(tx-px)/tx)
+            ydiff.append(abs(ty-py)/ty)
+            scaling.append(sc_err)
+
+        scaling = np.array(scaling)
         print('Average batch FWHM errors: lateral={}, vertical={}'.format(np.mean(xdiff),np.mean(ydiff)))
+        print('Average batch scaling error: ', np.mean(scaling, axis=0))
+        print('Batch scaling variance: ', np.var(scaling, axis=0))
+        X = X + xdiff
+        Y = Y + ydiff
+
+
+    print('Average small scaling error: ', np.mean(small_sc, axis=0))
+    plt.figure()
+    plt.hist(X,bins=100,range=(0.0, 2.5))
+    plt.axvline(np.mean(X), color='k', linestyle='dashed', linewidth=1)
+    min_ylim, max_ylim = plt.ylim()
+    plt.text(np.mean(X)*1.1, max_ylim*0.9, 'Mean: {:.2f}'.format(np.mean(X)))
+    plt.xlabel('FWHM error, fraction of true value')
+    plt.ylabel('Counts')
+    plt.title('Lateral (x-axis)')
+
+    plt.figure()
+    plt.hist(Y,bins=100,range=(0.0, 2.5))
+    plt.axvline(np.mean(Y), color='k', linestyle='dashed', linewidth=1)
+    min_ylim, max_ylim = plt.ylim()
+    plt.text(np.mean(Y)*1.1, max_ylim*0.9, 'Mean: {:.2f}'.format(np.mean(Y)))
+    plt.xlabel('FWHM error, fraction of true value')
+    plt.ylabel('Counts')
+    plt.title('Vertical (y-axis)')
+    plt.show()
 
 
 

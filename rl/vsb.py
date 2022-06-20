@@ -1,5 +1,10 @@
 """
-Raycing RL environment
+VERITAS beamline object.
+For implementing RL environments and running the optimization algorithms
+
+sets mirror randomly if parameters not defined in constructor
+update_m4 updates the parameters of the M4 mirror
+reset gives the mirror a new, random setting
 
 Emil Winzell
 April 2022
@@ -283,11 +288,11 @@ class VeritasSimpleBeamline(raycing.BeamLine):
         # Target
         displF = 0.
         self.scrTgt11 = rscr.Screen(self, name='screenTgt-0', 
-                                        center=[self.M4.center[0]-(self.distM4TgtAPXPS+displF)*np.sin(2*(self.M1.pitch + tmppitchM3+ tmppitchM4)),
-                                                self.M4.center[1]+(self.distM4TgtAPXPS+displF)*np.cos(2*(self.M1.pitch + tmppitchM3+ tmppitchM4)),
-                                                self.M4.center[2]])
+                                        center=[self.m4center[0]-(self.distM4TgtAPXPS+displF)*np.sin(2*(self.M1.pitch + tmppitchM3+ tmppitchM4)),
+                                                self.m4center[1]+(self.distM4TgtAPXPS+displF)*np.cos(2*(self.M1.pitch + tmppitchM3+ tmppitchM4)),
+                                                self.m4center[2]])
         self.scrTgt11.dqs = np.linspace(-14, 14, 9)
-        self.tgtCenter = self.M4.center[1]+(self.distM4TgtAPXPS+displF)*np.cos(2*(self.M1.pitch + tmppitchM3+ tmppitchM4))
+        self.tgtCenter = self.m4center[1]+(self.distM4TgtAPXPS+displF)*np.cos(2*(self.M1.pitch + tmppitchM3+ tmppitchM4))
         print('VERITAS beamline initialized')
 
         self.bins = 256
@@ -412,89 +417,4 @@ class VeritasSimpleBeamline(raycing.BeamLine):
                             self.m4center[2] + self.vertical]
 
 
-
-
-    
-# Environment class
-#
-class RaycingEnv():
-    # Raycing env
-    # state: (min fwhm and fwhm gap) 3 params
-    # actions: 2*5=10
-    def __init__(self,beamline):
-        super().__init__()
-
-        self.beamline = beamline#VeritasSimpleBeamline()
-
-        self.params = [0.0,0.0,0.0,0.0,0.0] #pitch, yaw, roll, lat(x), vert(y)
-        self.steps = [1e-5, 2e-4, 2e-4, 0.25 ,0.25]
-        self.FWHMx = None
-        self.FWHMy = None
-        self.gap = None
-        self.num_steps = 0
-
-    def __calculate_fwhm(self,data,lim,N):
-        x = np.linspace(lim[0], lim[-1], N)
-
-        def gaussian(x, amplitude, mean, stddev):
-            return amplitude * np.exp(-((x - mean) / np.sqrt(2) / stddev)**2)
-        
-        [amp,mean,std],_ = optimize.curve_fit(gaussian, lim, data)
-        std = abs(std)
-        fwhm = 2*np.sqrt(2*np.log(2))*std
-
-        return fwhm
-
-    def __calculate_argmin(data,xlim,N):
-        x = np.linspace(xlim[0], xlim[-1], N)
-
-        def poly(x, a0,a1,a2):
-            return a0 + a1 *x + a2*x**2
-    
-        [a0,a1,a2],_ = optimize.curve_fit(poly, xlim, data)
-        amin = x[np.argmin(poly(x, a0,a1,a2))]
-        return amin
-
-    def reset(self):
-        #self.beamline = VeritasSimpleBeamline()
-
-        self.params=[0.0,0.0,0.0,0.0,0.0]
-        self.FWHMx = None
-        self.FWHMy = None
-        self.gap = None
-        self.num_steps = 0
-
-    def step(self,action):
-        # action = (parameter, number of steps to change)
-        # parameter: 0-pitch, 1-yaw, 2-roll, 3-lateral, 4-vertical
-        self.params[action[0]] += action[1]*self.steps[action[0]]
-
-        self.beamline.update_m4(self.params)
-        rr.run_process = self.beamline.run_process
-        xrtr.run_ray_tracing(self.beamline.plots,repeats=self.beamline.repeats, 
-                                 updateEvery=self.beamline.repeats, beamLine=self.beamline)
-
-        f_x = []
-        f_y = []
-        for plot in self.beamline.plots:
-            xt1D = plot.xaxis.total1D
-            xBins = plot.xaxis.binEdges
-            yt1D = plot.yaxis.total1D
-            yBins = plot.yaxis.binEdges
-
-            f_x.append(self.__calculate_fwhm(xt1D,xBins,1000))
-            f_y.append(self.__calculate_fwhm(yt1D,yBins,1000))
-
-        xmin = self.__calculate_argmin(f_x,self.beamline.scrTgt11.dqs,1000)
-        ymin = self.__calculate_argmin(f_y,self.beamline.scrTgt11.dqs,1000)
-        self.gap = abs(xmin-ymin)
-        self.FWHMx = min(f_x)
-        self.FWHMy = min(f_y)
-        f_x = []
-        f_y = []
-        self.num_steps += 1
-
-
-
-    
 
